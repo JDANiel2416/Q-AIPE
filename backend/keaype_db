@@ -1,0 +1,534 @@
+--
+-- PostgreSQL database dump
+--
+
+-- Dumped from database version 17.5
+-- Dumped by pg_dump version 17.5
+
+-- Started on 2025-12-18 19:32:38
+
+SET statement_timeout = 0;
+SET lock_timeout = 0;
+SET idle_in_transaction_session_timeout = 0;
+SET transaction_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = on;
+SELECT pg_catalog.set_config('search_path', '', false);
+SET check_function_bodies = false;
+SET xmloption = content;
+SET client_min_messages = warning;
+SET row_security = off;
+
+--
+-- TOC entry 2 (class 3079 OID 17549)
+-- Name: pgcrypto; Type: EXTENSION; Schema: -; Owner: -
+--
+
+CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA public;
+
+
+--
+-- TOC entry 4915 (class 0 OID 0)
+-- Dependencies: 2
+-- Name: EXTENSION pgcrypto; Type: COMMENT; Schema: -; Owner: 
+--
+
+COMMENT ON EXTENSION pgcrypto IS 'cryptographic functions';
+
+
+SET default_tablespace = '';
+
+SET default_table_access_method = heap;
+
+--
+-- TOC entry 221 (class 1259 OID 17613)
+-- Name: bodega_schedules; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.bodega_schedules (
+    id integer NOT NULL,
+    bodega_id uuid,
+    day_of_week integer,
+    open_time time without time zone NOT NULL,
+    close_time time without time zone NOT NULL,
+    CONSTRAINT bodega_schedules_day_of_week_check CHECK (((day_of_week >= 0) AND (day_of_week <= 6)))
+);
+
+
+ALTER TABLE public.bodega_schedules OWNER TO postgres;
+
+--
+-- TOC entry 220 (class 1259 OID 17612)
+-- Name: bodega_schedules_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.bodega_schedules_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.bodega_schedules_id_seq OWNER TO postgres;
+
+--
+-- TOC entry 4916 (class 0 OID 0)
+-- Dependencies: 220
+-- Name: bodega_schedules_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
+--
+
+ALTER SEQUENCE public.bodega_schedules_id_seq OWNED BY public.bodega_schedules.id;
+
+
+--
+-- TOC entry 219 (class 1259 OID 17596)
+-- Name: bodegas; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.bodegas (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    owner_id uuid,
+    name character varying(100) NOT NULL,
+    address text,
+    latitude numeric(10,8) NOT NULL,
+    longitude numeric(11,8) NOT NULL,
+    manual_override character varying(10),
+    rating numeric(2,1) DEFAULT 5.0,
+    created_at timestamp with time zone DEFAULT now(),
+    CONSTRAINT bodegas_manual_override_check CHECK (((manual_override)::text = ANY ((ARRAY['OPEN'::character varying, 'CLOSED'::character varying])::text[])))
+);
+
+
+ALTER TABLE public.bodegas OWNER TO postgres;
+
+--
+-- TOC entry 223 (class 1259 OID 17626)
+-- Name: master_products; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.master_products (
+    id integer NOT NULL,
+    name character varying(150) NOT NULL,
+    category character varying(50),
+    synonyms text[],
+    image_url text,
+    default_unit character varying(10),
+    created_at timestamp with time zone DEFAULT now(),
+    CONSTRAINT master_products_default_unit_check CHECK (((default_unit)::text = ANY ((ARRAY['UND'::character varying, 'KG'::character varying, 'LITRO'::character varying, 'PAQUETE'::character varying])::text[])))
+);
+
+
+ALTER TABLE public.master_products OWNER TO postgres;
+
+--
+-- TOC entry 222 (class 1259 OID 17625)
+-- Name: master_products_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.master_products_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.master_products_id_seq OWNER TO postgres;
+
+--
+-- TOC entry 4917 (class 0 OID 0)
+-- Dependencies: 222
+-- Name: master_products_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
+--
+
+ALTER SEQUENCE public.master_products_id_seq OWNED BY public.master_products.id;
+
+
+--
+-- TOC entry 227 (class 1259 OID 17677)
+-- Name: reservation_items; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.reservation_items (
+    id integer NOT NULL,
+    reservation_id uuid,
+    product_id integer,
+    quantity numeric(10,2) NOT NULL,
+    unit_price numeric(10,2) NOT NULL,
+    subtotal numeric(10,2) GENERATED ALWAYS AS ((quantity * unit_price)) STORED
+);
+
+
+ALTER TABLE public.reservation_items OWNER TO postgres;
+
+--
+-- TOC entry 226 (class 1259 OID 17676)
+-- Name: reservation_items_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.reservation_items_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.reservation_items_id_seq OWNER TO postgres;
+
+--
+-- TOC entry 4918 (class 0 OID 0)
+-- Dependencies: 226
+-- Name: reservation_items_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
+--
+
+ALTER SEQUENCE public.reservation_items_id_seq OWNED BY public.reservation_items.id;
+
+
+--
+-- TOC entry 225 (class 1259 OID 17656)
+-- Name: reservations; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.reservations (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    client_id uuid,
+    bodega_id uuid,
+    status character varying(20) DEFAULT 'PENDING'::character varying,
+    total_amount numeric(10,2) DEFAULT 0,
+    pickup_code character varying(6),
+    created_at timestamp with time zone DEFAULT now(),
+    CONSTRAINT reservations_status_check CHECK (((status)::text = ANY ((ARRAY['PENDING'::character varying, 'CONFIRMED'::character varying, 'REJECTED'::character varying, 'COMPLETED'::character varying, 'CANCELLED'::character varying])::text[])))
+);
+
+
+ALTER TABLE public.reservations OWNER TO postgres;
+
+--
+-- TOC entry 224 (class 1259 OID 17636)
+-- Name: store_inventory; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.store_inventory (
+    bodega_id uuid NOT NULL,
+    product_id integer NOT NULL,
+    price numeric(10,2) NOT NULL,
+    stock_quantity numeric(10,2) DEFAULT 0 NOT NULL,
+    is_available boolean DEFAULT true,
+    last_updated timestamp with time zone DEFAULT now(),
+    CONSTRAINT store_inventory_price_check CHECK ((price >= (0)::numeric)),
+    CONSTRAINT store_inventory_stock_quantity_check CHECK ((stock_quantity >= (0)::numeric))
+);
+
+
+ALTER TABLE public.store_inventory OWNER TO postgres;
+
+--
+-- TOC entry 218 (class 1259 OID 17586)
+-- Name: users; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.users (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    phone_number character varying(20) NOT NULL,
+    full_name character varying(100),
+    role character varying(20) NOT NULL,
+    created_at timestamp with time zone DEFAULT now(),
+    CONSTRAINT users_role_check CHECK (((role)::text = ANY ((ARRAY['CLIENT'::character varying, 'BODEGUERO'::character varying, 'ADMIN'::character varying])::text[])))
+);
+
+
+ALTER TABLE public.users OWNER TO postgres;
+
+--
+-- TOC entry 4709 (class 2604 OID 17616)
+-- Name: bodega_schedules id; Type: DEFAULT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.bodega_schedules ALTER COLUMN id SET DEFAULT nextval('public.bodega_schedules_id_seq'::regclass);
+
+
+--
+-- TOC entry 4710 (class 2604 OID 17629)
+-- Name: master_products id; Type: DEFAULT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.master_products ALTER COLUMN id SET DEFAULT nextval('public.master_products_id_seq'::regclass);
+
+
+--
+-- TOC entry 4719 (class 2604 OID 17680)
+-- Name: reservation_items id; Type: DEFAULT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.reservation_items ALTER COLUMN id SET DEFAULT nextval('public.reservation_items_id_seq'::regclass);
+
+
+--
+-- TOC entry 4903 (class 0 OID 17613)
+-- Dependencies: 221
+-- Data for Name: bodega_schedules; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+
+
+--
+-- TOC entry 4901 (class 0 OID 17596)
+-- Dependencies: 219
+-- Data for Name: bodegas; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+INSERT INTO public.bodegas (id, owner_id, name, address, latitude, longitude, manual_override, rating, created_at) VALUES ('ef373221-0c33-4cb3-a308-f8c192350281', 'c32e459f-2dba-4f2b-ac08-14643012f7a5', 'Bodega Don Lucho', 'Av. La Rivera 123, Huanchaco', -8.07830000, -79.11800000, 'OPEN', 5.0, '2025-12-18 01:16:29.448861-05');
+
+
+--
+-- TOC entry 4905 (class 0 OID 17626)
+-- Dependencies: 223
+-- Data for Name: master_products; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+INSERT INTO public.master_products (id, name, category, synonyms, image_url, default_unit, created_at) VALUES (1, 'Coca Cola Sabor Original 3L', 'Bebidas', '{gorda,familiar,negra,"cocacola 3l"}', NULL, 'UND', '2025-12-18 01:16:29.448861-05');
+INSERT INTO public.master_products (id, name, category, synonyms, image_url, default_unit, created_at) VALUES (2, 'Arroz Costeño Extra', 'Abarrotes', '{arroz,costeño,"kilo de arroz"}', NULL, 'KG', '2025-12-18 01:16:29.448861-05');
+INSERT INTO public.master_products (id, name, category, synonyms, image_url, default_unit, created_at) VALUES (3, 'Cerveza Pilsen Callao 630ml', 'Alcohol', '{chela,pilsen,biela,rubia}', NULL, 'UND', '2025-12-18 01:16:29.448861-05');
+
+
+--
+-- TOC entry 4909 (class 0 OID 17677)
+-- Dependencies: 227
+-- Data for Name: reservation_items; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+
+
+--
+-- TOC entry 4907 (class 0 OID 17656)
+-- Dependencies: 225
+-- Data for Name: reservations; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+
+
+--
+-- TOC entry 4906 (class 0 OID 17636)
+-- Dependencies: 224
+-- Data for Name: store_inventory; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+INSERT INTO public.store_inventory (bodega_id, product_id, price, stock_quantity, is_available, last_updated) VALUES ('ef373221-0c33-4cb3-a308-f8c192350281', 1, 14.50, 10.00, true, '2025-12-18 01:16:29.448861-05');
+INSERT INTO public.store_inventory (bodega_id, product_id, price, stock_quantity, is_available, last_updated) VALUES ('ef373221-0c33-4cb3-a308-f8c192350281', 3, 7.00, 48.00, true, '2025-12-18 01:16:29.448861-05');
+
+
+--
+-- TOC entry 4900 (class 0 OID 17586)
+-- Dependencies: 218
+-- Data for Name: users; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+INSERT INTO public.users (id, phone_number, full_name, role, created_at) VALUES ('c32e459f-2dba-4f2b-ac08-14643012f7a5', '+51999999999', 'Don Lucho', 'BODEGUERO', '2025-12-18 01:16:29.448861-05');
+
+
+--
+-- TOC entry 4919 (class 0 OID 0)
+-- Dependencies: 220
+-- Name: bodega_schedules_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.bodega_schedules_id_seq', 1, false);
+
+
+--
+-- TOC entry 4920 (class 0 OID 0)
+-- Dependencies: 222
+-- Name: master_products_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.master_products_id_seq', 6, true);
+
+
+--
+-- TOC entry 4921 (class 0 OID 0)
+-- Dependencies: 226
+-- Name: reservation_items_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.reservation_items_id_seq', 1, false);
+
+
+--
+-- TOC entry 4736 (class 2606 OID 17619)
+-- Name: bodega_schedules bodega_schedules_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.bodega_schedules
+    ADD CONSTRAINT bodega_schedules_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 4733 (class 2606 OID 17606)
+-- Name: bodegas bodegas_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.bodegas
+    ADD CONSTRAINT bodegas_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 4739 (class 2606 OID 17635)
+-- Name: master_products master_products_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.master_products
+    ADD CONSTRAINT master_products_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 4746 (class 2606 OID 17683)
+-- Name: reservation_items reservation_items_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.reservation_items
+    ADD CONSTRAINT reservation_items_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 4744 (class 2606 OID 17665)
+-- Name: reservations reservations_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.reservations
+    ADD CONSTRAINT reservations_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 4742 (class 2606 OID 17645)
+-- Name: store_inventory store_inventory_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.store_inventory
+    ADD CONSTRAINT store_inventory_pkey PRIMARY KEY (bodega_id, product_id);
+
+
+--
+-- TOC entry 4729 (class 2606 OID 17595)
+-- Name: users users_phone_number_key; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.users
+    ADD CONSTRAINT users_phone_number_key UNIQUE (phone_number);
+
+
+--
+-- TOC entry 4731 (class 2606 OID 17593)
+-- Name: users users_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.users
+    ADD CONSTRAINT users_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 4734 (class 1259 OID 17694)
+-- Name: idx_bodegas_geo; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_bodegas_geo ON public.bodegas USING btree (latitude, longitude);
+
+
+--
+-- TOC entry 4740 (class 1259 OID 17695)
+-- Name: idx_inventory_product; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_inventory_product ON public.store_inventory USING btree (product_id);
+
+
+--
+-- TOC entry 4737 (class 1259 OID 17696)
+-- Name: idx_products_synonyms; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_products_synonyms ON public.master_products USING gin (synonyms);
+
+
+--
+-- TOC entry 4748 (class 2606 OID 17620)
+-- Name: bodega_schedules bodega_schedules_bodega_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.bodega_schedules
+    ADD CONSTRAINT bodega_schedules_bodega_id_fkey FOREIGN KEY (bodega_id) REFERENCES public.bodegas(id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 4747 (class 2606 OID 17607)
+-- Name: bodegas bodegas_owner_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.bodegas
+    ADD CONSTRAINT bodegas_owner_id_fkey FOREIGN KEY (owner_id) REFERENCES public.users(id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 4753 (class 2606 OID 17689)
+-- Name: reservation_items reservation_items_product_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.reservation_items
+    ADD CONSTRAINT reservation_items_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.master_products(id);
+
+
+--
+-- TOC entry 4754 (class 2606 OID 17684)
+-- Name: reservation_items reservation_items_reservation_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.reservation_items
+    ADD CONSTRAINT reservation_items_reservation_id_fkey FOREIGN KEY (reservation_id) REFERENCES public.reservations(id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 4751 (class 2606 OID 17671)
+-- Name: reservations reservations_bodega_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.reservations
+    ADD CONSTRAINT reservations_bodega_id_fkey FOREIGN KEY (bodega_id) REFERENCES public.bodegas(id);
+
+
+--
+-- TOC entry 4752 (class 2606 OID 17666)
+-- Name: reservations reservations_client_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.reservations
+    ADD CONSTRAINT reservations_client_id_fkey FOREIGN KEY (client_id) REFERENCES public.users(id);
+
+
+--
+-- TOC entry 4749 (class 2606 OID 17646)
+-- Name: store_inventory store_inventory_bodega_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.store_inventory
+    ADD CONSTRAINT store_inventory_bodega_id_fkey FOREIGN KEY (bodega_id) REFERENCES public.bodegas(id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 4750 (class 2606 OID 17651)
+-- Name: store_inventory store_inventory_product_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.store_inventory
+    ADD CONSTRAINT store_inventory_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.master_products(id) ON DELETE RESTRICT;
+
+
+-- Completed on 2025-12-18 19:32:38
+
+--
+-- PostgreSQL database dump complete
+--
+
