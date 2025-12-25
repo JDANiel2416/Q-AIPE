@@ -34,6 +34,8 @@ class BodegaSearchResult(BaseModel):
     bodega_id: UUID
     name: str
     distance_meters: int
+    latitude: float
+    longitude: float
     is_open: bool
     completeness_score: float
     total_price: float

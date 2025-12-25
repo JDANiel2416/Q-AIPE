@@ -7,19 +7,27 @@ import '../models/search_models.dart';
 class ApiService {
   static String get baseUrl {
     if (kIsWeb) return "http://127.0.0.1:8000/api/v1";
-    if (Platform.isAndroid) return "http://10.0.2.2:8000/api/v1"; 
+    
+    // OJO: Cambia los X por tu IP real, ejemplo: 192.168.1.15
+    if (Platform.isAndroid) return "http://192.168.1.182:8000/api/v1"; 
+    
     return "http://127.0.0.1:8000/api/v1";
   }
 
-  // Ahora pedimos el historial (history) como parámetro
-  static Future<SmartSearchResponse> searchSmart(String query, List<Map<String, String>> history) async {
+  // Ahora aceptamos latitud y longitud dinámicas
+  Future<SmartSearchResponse> searchSmart(
+      String query, 
+      double userLat, 
+      double userLon, 
+      [List<Map<String, String>> history = const []]
+  ) async {
     final url = Uri.parse('$baseUrl/search/smart');
     
     final body = {
       "query": query,
-      "user_lat": -8.0783,
-      "user_lon": -79.1180,
-      "conversation_history": history // <--- Enviamos historial al backend
+      "user_lat": userLat, // Usamos las coordenadas reales del mapa
+      "user_lon": userLon,
+      "conversation_history": history 
     };
 
     try {
@@ -30,6 +38,7 @@ class ApiService {
       );
 
       if (response.statusCode == 200) {
+        // Decodificamos utf8 para que las tildes y ñ se vean bien
         final data = jsonDecode(utf8.decode(response.bodyBytes));
         return SmartSearchResponse.fromJson(data);
       } else {
@@ -40,4 +49,56 @@ class ApiService {
       rethrow;
     }
   }
+
+  // --- NUEVO: AUTH ---
+
+Future<Map<String, dynamic>> consultDni(String dni) async {
+    final url = Uri.parse('$baseUrl/auth/consult_dni');
+    try {
+      print("🔵 Enviando DNI a: $url"); // <--- Debug
+      final response = await http.post(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({"dni": dni}),
+      );
+      
+      print("🟢 Respuesta Backend (${response.statusCode}): ${response.body}"); // <--- ¡AQUÍ VEREMOS EL JSON!
+
+      if (response.statusCode == 200) {
+        return jsonDecode(utf8.decode(response.bodyBytes));
+      } else {
+        return {"success": false, "message": "Error de conexión"};
+      }
+    } catch (e) {
+      print("🔴 Error en ApiService: $e"); // <--- Debug
+      return {"success": false, "message": "Error: $e"};
+    }
+  }
+
+  Future<Map<String, dynamic>> registerUser(String dni, String password, String phone) async {
+    final url = Uri.parse('$baseUrl/auth/register');
+    try {
+      final response = await http.post(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "dni": dni,
+          "password": password,
+          "phone": phone,
+          "role": "CLIENT" // Por defecto entra como cliente
+        }),
+      );
+
+      final data = jsonDecode(utf8.decode(response.bodyBytes));
+      
+      if (response.statusCode == 200) {
+        return {"success": true, "user_id": data["user_id"]};
+      } else {
+        return {"success": false, "message": data["detail"] ?? "Error al registrar"};
+      }
+    } catch (e) {
+      return {"success": false, "message": "Error: $e"};
+    }
+  }
+
 }

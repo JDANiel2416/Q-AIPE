@@ -24,7 +24,7 @@ android {
         applicationId = "com.example.frontend"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        minSdk = 26
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
@@ -41,4 +41,9 @@ android {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    // Esta línea permite que MainActivity.kt vea las clases de Yandex
+    implementation("com.yandex.android:maps.mobile:4.6.1-lite")
 }

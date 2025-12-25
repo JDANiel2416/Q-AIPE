@@ -7,6 +7,9 @@ class Settings(BaseSettings):
     
     # Base de Datos
     DATABASE_URL: str
+
+    # Reniec
+    RENIEC_API_TOKEN: str
     
     # Inteligencia Artificial
     GEMINI_API_KEY: str

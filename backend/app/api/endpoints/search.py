@@ -9,14 +9,23 @@ router = APIRouter()
 
 @router.post("/smart", response_model=SmartSearchResponse)
 async def search_smart(request: SearchRequest, db: Session = Depends(get_db)):
+    
+    # --- DEBUG 1: COORDENADAS ---
+    print(f"\n📍 [DEBUG] Ubicación recibida del usuario: {request.user_lat}, {request.user_lon}")
+    # ----------------------------
+
     # 1. Interpretar intención CON HISTORIAL
     intent_json = await gemini_client.interpret_search_intent(
         request.query, 
-        request.conversation_history # <--- Pasamos el contexto
+        request.conversation_history
     )
     
     keywords = [item.get("product_name", "") for item in intent_json]
     
+    # --- DEBUG 2: LO QUE ENTENDIÓ GEMINI ---
+    print(f"🤖 [DEBUG] Gemini extrajo estas keywords: {keywords}")
+    # ---------------------------------------
+
     # Caso charla (sin productos)
     if not keywords:
         msg = await gemini_client.generate_shopkeeper_response(
@@ -25,10 +34,16 @@ async def search_smart(request: SearchRequest, db: Session = Depends(get_db)):
         )
         return SmartSearchResponse(message=msg, results=[])
 
-    # 2. Buscar en BD (Esto ya busca en TODAS las bodegas)
+    # 2. Buscar en BD
     raw_results = InventoryRepository.search_products_smart(
         db, keywords, request.user_lat, request.user_lon
     )
+
+    # --- DEBUG 3: RESULTADOS CRUDOS DE LA BD ---
+    print(f"🔎 [DEBUG] La BD encontró {len(raw_results)} filas coincidentes.")
+    for i, (inv, prod, bodega) in enumerate(raw_results):
+        print(f"   Row {i}: Bodega='{bodega.name}' | Prod='{prod.name}' | Lat/Lon Bodega={bodega.latitude},{bodega.longitude}")
+    # -------------------------------------------
 
     # 3. Agrupar resultados
     bodegas_map = {}
@@ -52,9 +67,12 @@ async def search_smart(request: SearchRequest, db: Session = Depends(get_db)):
         for item in found:
             all_found_products.add(item.name)
 
+        # OJO: Aquí forzamos distance_meters a 100 fijo, luego lo calcularemos real
         response_list.append(BodegaSearchResult(
             bodega_id=data["bodega"].id,
             name=data["bodega"].name,
+            latitude=float(data["bodega"].latitude),
+            longitude=float(data["bodega"].longitude),
             distance_meters=100, 
             is_open=True,
             completeness_score=completeness * 100,

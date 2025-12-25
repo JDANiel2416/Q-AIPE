@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'screens/home_screen.dart';
+import 'screens/login_screen.dart';
+import 'screens/splash_screen.dart';
 
 void main() {
   runApp(const MyApp());
@@ -21,7 +23,7 @@ class MyApp extends StatelessWidget {
         // Definimos la fuente por defecto si quisieras cambiarla luego
         fontFamily: 'Roboto', 
       ),
-      home: const HomeScreen(),
+      home: SplashScreen(),
     );
   }
 }

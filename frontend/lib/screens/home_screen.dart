@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:yandex_mapkit/yandex_mapkit.dart'; // <--- 1. IMPORTANTE: Yandex
 import '../models/search_models.dart';
 import '../services/api_service.dart';
 
@@ -27,11 +28,18 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  final ApiService _apiService = ApiService(); // Instancia del servicio
   final List<ChatMessage> _messages = [];
   
   bool _isChatStarted = false;
   bool _isTyping = false;
-  bool _isLoading = false; // Variable para bloquear la UI mientras carga
+  bool _isLoading = false; 
+
+  // --- VARIABLES NUEVAS DEL MAPA ---
+  late YandexMapController _mapController;
+  List<MapObject> _mapObjects = [];
+  // Ubicación inicial (Huanchaco)
+  final Point _userLocation = const Point(latitude: -8.0783, longitude: -79.1180);
 
   @override
   void initState() {
@@ -44,6 +52,9 @@ class _HomeScreenState extends State<HomeScreen> {
         });
       }
     });
+    
+    // Dibujamos al usuario en el mapa desde el inicio
+    _updateMapMarkers([]);
   }
 
   @override
@@ -51,6 +62,71 @@ class _HomeScreenState extends State<HomeScreen> {
     _controller.dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  // --- LÓGICA DEL MAPA (NUEVA) ---
+  
+  void _updateMapMarkers(List<BodegaSearchResult> bodegas) {
+    List<MapObject> newMarkers = [];
+
+    // 1. EL USUARIO (Punto Azul Brillante)
+    newMarkers.add(CircleMapObject(
+      mapId: const MapObjectId('user_location'),
+      circle: Circle(center: _userLocation, radius: 20),
+      strokeColor: Colors.white,
+      strokeWidth: 2,
+      fillColor: const Color(0xFF4D6FFF).withOpacity(0.9), // Tu color azul
+      zIndex: 10,
+    ));
+
+    // 2. LAS BODEGAS (Puntos Rojos)
+    for (var bodega in bodegas) {
+      newMarkers.add(CircleMapObject(
+        mapId: MapObjectId(bodega.bodegaId),
+        circle: Circle(
+          center: Point(latitude: bodega.latitude, longitude: bodega.longitude), 
+          radius: 15
+        ),
+        strokeColor: Colors.white,
+        strokeWidth: 2,
+        fillColor: Colors.redAccent.withOpacity(0.9),
+        consumeTapEvents: true,
+        onTap: (obj, point) {
+           // Opcional: Feedback al tocar
+        }
+      ));
+    }
+
+    setState(() {
+      _mapObjects = newMarkers;
+    });
+  }
+
+  void _moveCameraToFit(List<BodegaSearchResult> bodegas) {
+    if (bodegas.isEmpty) return;
+
+    double minLat = _userLocation.latitude;
+    double maxLat = _userLocation.latitude;
+    double minLon = _userLocation.longitude;
+    double maxLon = _userLocation.longitude;
+
+    for (var b in bodegas) {
+      if (b.latitude < minLat) minLat = b.latitude;
+      if (b.latitude > maxLat) maxLat = b.latitude;
+      if (b.longitude < minLon) minLon = b.longitude;
+      if (b.longitude > maxLon) maxLon = b.longitude;
+    }
+
+    // Zoom inteligente
+    _mapController.moveCamera(
+      CameraUpdate.newBounds(
+        BoundingBox(
+          northEast: Point(latitude: maxLat + 0.002, longitude: maxLon + 0.002),
+          southWest: Point(latitude: minLat - 0.002, longitude: minLon - 0.002),
+        ),
+      ),
+      animation: const MapAnimation(type: MapAnimationType.smooth, duration: 1.0),
+    );
   }
 
   // --- FUNCIÓN PARA CONSTRUIR EL HISTORIAL ---
@@ -66,32 +142,38 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _handleSubmitted() async {
     final text = _controller.text.trim();
-    if (text.isEmpty || _isLoading) return; // Bloqueo si está cargando
+    if (text.isEmpty || _isLoading) return;
 
     HapticFeedback.lightImpact();
-
-    // 1. Capturamos el historial ANTES de agregar el nuevo mensaje (para no duplicarlo)
-    final history = _buildHistoryPayload();
+    
+    // Capturamos historial antes de añadir el nuevo
+    final history = _buildHistoryPayload(); 
 
     setState(() {
       _isChatStarted = true;
-      _isLoading = true; // Activamos bloqueo
+      _isLoading = true;
       _messages.add(ChatMessage(type: MessageType.user, text: text));
       _messages.add(ChatMessage(type: MessageType.botThinking));
       _isTyping = false;
     });
-    
     _controller.clear();
     _scrollToBottom();
 
     try {
-      // 2. Enviamos query + historial al Backend
-      final response = await ApiService.searchSmart(text, history);
+      // Usamos tu ApiService existente, pero ahora pasamos coordenadas
+      final response = await _apiService.searchSmart(text, _userLocation.latitude, _userLocation.longitude); // Asumo que actualizaste ApiService para aceptar lat/lon
+      
+      // NOTA: Si tu ApiService aún pide 'history', úsalo. 
+      // Si actualizaste searchSmart para pedir (query, lat, lon), usa la línea de arriba.
+      // Si searchSmart pide (query, history), usa: await ApiService.searchSmart(text, history);
+      
+      // --- ACTUALIZAR MAPA ---
+      _updateMapMarkers(response.results);
+      _moveCameraToFit(response.results);
+      // -----------------------
 
       setState(() {
         _messages.removeLast(); // Quitamos "Pensando..."
-
-        // Agregamos la respuesta completa (Mensaje + Resultados)
         _messages.add(ChatMessage(
           type: MessageType.botResponse,
           text: response.message, 
@@ -99,18 +181,19 @@ class _HomeScreenState extends State<HomeScreen> {
         ));
       });
     } catch (e) {
+      print("Error UI: $e");
       setState(() {
         _messages.removeLast();
         _messages.add(ChatMessage(
           type: MessageType.botResponse,
-          text: "Tuve un problema de conexión con las bodegas. Intenta de nuevo por favor.",
+          text: "Tuve un problema de conexión con las bodegas. ($e)",
           results: null,
         ));
       });
     } finally {
       if (mounted) {
         setState(() {
-          _isLoading = false; // Desbloqueamos UI
+          _isLoading = false;
         });
       }
       _scrollToBottom();
@@ -133,10 +216,10 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF0F111A),
-      resizeToAvoidBottomInset: false, // Evita que el fondo se mueva con el teclado
+      resizeToAvoidBottomInset: false, 
       body: Stack(
         children: [
-          // 1. FONDO AMBIENTAL
+          // 1. FONDO AMBIENTAL (Tu diseño original)
           const RepaintBoundary(child: AmbientBackground()),
 
           // 2. CONTENIDO
@@ -144,6 +227,11 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Column(
               children: [
                 _buildAppBar(),
+                
+                // --- NUEVO: SECCIÓN DEL MAPA ---
+                _buildMapSection(), 
+                // -------------------------------
+
                 Expanded(
                   child: !_isChatStarted ? _buildWelcomeView() : _buildChatList(),
                 ),
@@ -156,9 +244,39 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // --- WIDGET DEL MAPA (Nuevo) ---
+  Widget _buildMapSection() {
+    return Container(
+      height: 220, // Altura del minimapa
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.white.withOpacity(0.1)),
+        boxShadow: [
+           BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 15, offset: const Offset(0, 5))
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: YandexMap(
+          onMapCreated: (controller) {
+            _mapController = controller;
+            // Mover cámara inicial a Huanchaco
+            _mapController.moveCamera(
+              CameraUpdate.newCameraPosition(
+                CameraPosition(target: _userLocation, zoom: 15),
+              ),
+            );
+          },
+          mapObjects: _mapObjects,
+          nightModeEnabled: true, // ¡Modo oscuro para combinar con tu app!
+        ),
+      ),
+    );
+  }
+
   Widget _buildInputAreaWrapper(BuildContext context) {
     final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
-    
     return AnimatedContainer(
       duration: const Duration(milliseconds: 100),
       curve: Curves.easeOut,
@@ -192,6 +310,7 @@ class _HomeScreenState extends State<HomeScreen> {
               _messages.clear(); 
               _isChatStarted = false; 
               _isLoading = false;
+              _updateMapMarkers([]); // Limpiar mapa
             });
           }),
         ],
@@ -281,7 +400,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _contentForMessage(ChatMessage msg) {
     if (msg.type == MessageType.user) {
-      // --- MENSAJE DE USUARIO ---
       return Align(
         alignment: Alignment.centerRight,
         child: Container(
@@ -303,7 +421,6 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       );
     } else if (msg.type == MessageType.botThinking) {
-      // --- ESTADO PENSANDO ---
       return Row(
         children: [
           const SizedBox(width: 15, height: 15, child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF4D6FFF))),
@@ -312,11 +429,9 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       );
     } else {
-      // --- RESPUESTA DEL BOT (TEXTO + RESULTADOS) ---
        return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-           // 1. Burbuja de texto (El mensaje humano de Q-AIPE)
            if (msg.text != null && msg.text!.isNotEmpty)
              Container(
                margin: const EdgeInsets.only(bottom: 12),
@@ -337,7 +452,6 @@ class _HomeScreenState extends State<HomeScreen> {
                ),
              ),
            
-           // 2. Tarjetas de productos (Si existen resultados)
            if (msg.results != null && msg.results!.isNotEmpty)
              ...msg.results!.map((b) => _buildBodegaCard(b)),
         ],
@@ -355,7 +469,6 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       child: Column(
         children: [
-          // Header Bodega
           Padding(
             padding: const EdgeInsets.all(16),
             child: Row(
@@ -370,7 +483,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(bodega.name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
-                      Text("A 100m • ⭐ 4.8", style: TextStyle(color: Colors.grey[500], fontSize: 12)),
+                      Text("A ${bodega.distanceMeters}m • ${bodega.isOpen ? 'ABIERTO' : 'CERRADO'}", 
+                        style: TextStyle(color: bodega.isOpen ? Colors.greenAccent : Colors.redAccent, fontSize: 12)),
                     ],
                   ),
                 ),
@@ -381,7 +495,6 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           Container(height: 1, color: Colors.white.withOpacity(0.05)),
           
-          // Items
           Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
@@ -392,7 +505,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     Icon(Icons.check_circle_rounded, color: Colors.greenAccent.withOpacity(0.7), size: 16),
                     const SizedBox(width: 8),
                     Expanded(child: Text(item.name, style: TextStyle(color: Colors.grey[400], fontSize: 14))),
-                    Text("x1", style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+                    Text(item.unit, style: TextStyle(color: Colors.grey[600], fontSize: 12)),
                   ],
                 ),
               )).toList(),
@@ -418,12 +531,11 @@ class _HomeScreenState extends State<HomeScreen> {
           Expanded(
             child: TextField(
               controller: _controller,
-              // BLOQUEO: Deshabilitar input si está cargando
               enabled: !_isLoading,
               style: TextStyle(color: _isLoading ? Colors.white38 : Colors.white),
               cursorColor: const Color(0xFF4D6FFF),
               decoration: InputDecoration(
-                hintText: _isLoading ? "Buscando, dame un momento..." : "Escribe tu pedido...",
+                hintText: _isLoading ? "Buscando..." : "Escribe tu pedido...",
                 hintStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
                 border: InputBorder.none,
                 contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
@@ -432,18 +544,15 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           
-          // Botón de Enviar con Estado de Carga
           AnimatedContainer(
             duration: const Duration(milliseconds: 200),
             margin: const EdgeInsets.only(right: 6),
             decoration: BoxDecoration(
-              // El color cambia para indicar estado activo/inactivo
               color: (_isTyping || _isLoading) ? const Color(0xFF4D6FFF) : Colors.transparent,
               shape: BoxShape.circle,
             ),
             child: IconButton(
               icon: _isLoading 
-                // Spinner giratorio si está cargando
                 ? const SizedBox(
                     width: 20, 
                     height: 20, 
@@ -462,7 +571,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-// --- FONDO ANIMADO ---
+// --- FONDO ANIMADO (TU ORIGINAL) ---
 class AmbientBackground extends StatefulWidget {
   const AmbientBackground({super.key});
   @override

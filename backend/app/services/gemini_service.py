@@ -6,7 +6,7 @@ import json
 class GeminiService:
     def __init__(self):
         self.client = genai.Client(api_key=settings.GEMINI_API_KEY)
-        self.model_name = "gemini-2.5-flash"
+        self.model_name = "gemini-2.5-flash-lite"
 
     async def interpret_search_intent(self, user_query: str, history: list) -> list:
         # Convertimos el historial a texto para que Gemini lo lea
@@ -44,7 +44,7 @@ class GeminiService:
 
     async def generate_shopkeeper_response(self, user_query: str, context_str: str) -> str:
         prompt = f"""
-        Actúa como "Keaype", un asistente virtual amable y eficaz que ayuda a vecinos de Huanchaco (Perú) a encontrar productos en MÚLTIPLES bodegas.
+        Actúa como "Q-AIPE", un asistente virtual amable y eficaz que ayuda a vecinos de Huanchaco (Perú) a encontrar productos en MÚLTIPLES bodegas.
         NO eres dueño de ninguna bodega. Eres el intermediario que busca en todas.
         
         Input Cliente: "{user_query}"
