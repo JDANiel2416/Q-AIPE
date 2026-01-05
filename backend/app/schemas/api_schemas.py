@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Any
 from uuid import UUID
 
 # --- 1. SCHEMAS DE ENTRADA (REQUESTS) ---
@@ -23,9 +23,18 @@ class ProductItem(BaseModel):
     stock: float
     unit: str
     
-    # Esto permite leer datos directamente de la Base de Datos
+    # NUEVO: Para devolver las características al frontend
+    attributes: Optional[Dict[str, Any]] = {} 
+
     class Config:
-        from_attributes = True 
+        from_attributes = True
+
+class ProductCreateRequest(BaseModel):
+    name: str               # "Agua de Mesa"
+    category: str           # "Bebidas"
+    price: float            # 2.50
+    stock: int              # 50
+    attributes: Dict[str, Any] # {"marca": "San Luis", "capacidad": "1L"}
 
 # --- 3. SCHEMAS DE SALIDA (RESPONSES) ---
 # Lo que Python le responde a Flutter

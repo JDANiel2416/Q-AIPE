@@ -1,5 +1,5 @@
 from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, Numeric, TIME, TIMESTAMP, text
-from sqlalchemy.dialects.postgresql import UUID, ARRAY
+from sqlalchemy.dialects.postgresql import UUID, ARRAY, JSONB
 from sqlalchemy.orm import relationship
 from app.db.base import Base
 import uuid
@@ -79,6 +79,8 @@ class MasterProduct(Base):
     synonyms = Column(ARRAY(String)) # ["Gaseosa", "Refresco", "Soda"]
     image_url = Column(String)
     default_unit = Column(String) # "UND", "KG", "LT"
+    # NUEVO CAMPO: Aquí se guardará {"marca": "Cielo", "gas": false}
+    attributes = Column(JSONB, default={})
 
 
 # 5. INVENTARIO

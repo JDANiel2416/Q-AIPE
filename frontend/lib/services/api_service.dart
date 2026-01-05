@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../models/search_models.dart';
+import '../models/inventory_models.dart';
 
 class ApiService {
   static String get baseUrl {
@@ -12,6 +13,28 @@ class ApiService {
     if (Platform.isAndroid) return "http://192.168.1.48:8000/api/v1"; 
     
     return "http://127.0.0.1:8000/api/v1";
+  }
+
+  Future<bool> addProduct(String userId, ProductCreateRequest product) async {
+    final url = Uri.parse('$baseUrl/bodeguero/add-product?user_id=$userId');
+    
+    try {
+      final response = await http.post(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode(product.toJson()),
+      );
+
+      if (response.statusCode == 200) {
+        return true;
+      } else {
+        print("Error al crear producto: ${response.body}");
+        return false;
+      }
+    } catch (e) {
+      print("Error de conexión: $e");
+      return false;
+    }
   }
 
   // Ahora aceptamos latitud y longitud dinámicas

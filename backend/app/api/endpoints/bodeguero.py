@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.models.tables import User, Bodega, StoreInventory, MasterProduct
+from app.schemas.api_schemas import ProductCreateRequest
 from pydantic import BaseModel
 
 router = APIRouter()
@@ -62,3 +63,41 @@ def toggle_stock(user_id: str, update: StockUpdate, db: Session = Depends(get_db
     db.commit()
     
     return {"success": True, "new_stock": item.stock_quantity}
+
+@router.post("/add-product")
+def add_custom_product(
+    user_id: str, 
+    product_data: ProductCreateRequest, 
+    db: Session = Depends(get_db)
+):
+    # 1. Validar Bodega
+    bodega = db.query(Bodega).filter(Bodega.owner_id == user_id).first()
+    if not bodega:
+        raise HTTPException(status_code=404, detail="No tienes bodega")
+
+    # 2. Crear (o buscar) el MasterProduct con los ATRIBUTOS JSON
+    # NOTA: Aquí asumimos que cada combinación única de atributos crea un producto nuevo
+    # o podrías buscar si ya existe uno igual. Para simplificar, creamos uno nuevo.
+    new_master = MasterProduct(
+        name=product_data.name,
+        category=product_data.category,
+        # AQUÍ ESTÁ LA MAGIA: Guardamos el JSON directo
+        attributes=product_data.attributes, 
+        default_unit="UND" # O lo que venga del front
+    )
+    db.add(new_master)
+    db.commit()
+    db.refresh(new_master)
+
+    # 3. Agregarlo al inventario de la bodega
+    new_inventory = StoreInventory(
+        bodega_id=bodega.id,
+        product_id=new_master.id,
+        price=product_data.price,
+        stock_quantity=product_data.stock,
+        is_available=True
+    )
+    db.add(new_inventory)
+    db.commit()
+
+    return {"success": True, "product_id": new_master.id, "message": "Producto creado con detalles"}

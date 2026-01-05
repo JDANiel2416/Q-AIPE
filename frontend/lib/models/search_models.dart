@@ -4,13 +4,15 @@ class ProductItem {
   final double price;
   final double stock;
   final String unit;
+  final Map<String, dynamic> attributes;
 
   ProductItem({
     required this.productId, 
     required this.name, 
     required this.price, 
     required this.stock, 
-    required this.unit
+    required this.unit,
+    required this.attributes,
   });
 
   factory ProductItem.fromJson(Map<String, dynamic> json) {
@@ -19,7 +21,11 @@ class ProductItem {
       name: json['name'],
       price: (json['price'] as num).toDouble(),
       stock: (json['stock'] as num).toDouble(),
-      unit: json['unit'],
+      unit: json['unit'] ?? 'UND',
+      // Lectura segura del mapa de atributos
+      attributes: json['attributes'] != null 
+          ? Map<String, dynamic>.from(json['attributes']) 
+          : {}, 
     );
   }
 }
