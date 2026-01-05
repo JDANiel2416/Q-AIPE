@@ -75,24 +75,39 @@ Future<Map<String, dynamic>> consultDni(String dni) async {
     }
   }
 
-  Future<Map<String, dynamic>> registerUser(String dni, String password, String phone) async {
+  Future<Map<String, dynamic>> registerUser(
+      String dni, 
+      String password, 
+      String phone, 
+      String role, 
+      {String? bodegaName, double? lat, double? lon} // Parámetros opcionales
+  ) async {
     final url = Uri.parse('$baseUrl/auth/register');
     try {
+      final body = {
+        "dni": dni,
+        "password": password,
+        "phone": phone,
+        "role": role,
+        if (bodegaName != null) "bodega_name": bodegaName,
+        if (lat != null) "latitude": lat,
+        if (lon != null) "longitude": lon,
+      };
+
       final response = await http.post(
         url,
         headers: {"Content-Type": "application/json"},
-        body: jsonEncode({
-          "dni": dni,
-          "password": password,
-          "phone": phone,
-          "role": "CLIENT" // Por defecto entra como cliente
-        }),
+        body: jsonEncode(body),
       );
 
       final data = jsonDecode(utf8.decode(response.bodyBytes));
       
       if (response.statusCode == 200) {
-        return {"success": true, "user_id": data["user_id"]};
+        return {
+            "success": true, 
+            "user_id": data["user_id"], 
+            "role": data["role"] // <--- ¡No dejes que se pierda!
+        };
       } else {
         return {"success": false, "message": data["detail"] ?? "Error al registrar"};
       }
@@ -100,6 +115,7 @@ Future<Map<String, dynamic>> consultDni(String dni) async {
       return {"success": false, "message": "Error: $e"};
     }
   }
+
 
   Future<List<dynamic>> getMyInventory(String userId) async {
     final url = Uri.parse('$baseUrl/bodeguero/my-inventory?user_id=$userId');
