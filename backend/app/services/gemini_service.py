@@ -6,7 +6,7 @@ import json
 class GeminiService:
     def __init__(self):
         self.client = genai.Client(api_key=settings.GEMINI_API_KEY)
-        self.model_name = "gemini-2.5-flash-lite"
+        self.model_name = "gemini-2.5-flash" # "gemini-2.5-flash" "gemini-3-pro-preview" "gemini-3-flash-preview" "gemini-2.5-flash" "gemini-2.5-flash-lite" "gemini-2.5-pro" "gemini-2.0-flash-lite"
 
     async def interpret_search_intent(self, user_query: str, history: list) -> list:
         # Convertimos el historial a texto para que Gemini lo lea

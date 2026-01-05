@@ -3,7 +3,8 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:yandex_mapkit/yandex_mapkit.dart'; // <--- 1. IMPORTANTE: Yandex
+import 'package:yandex_mapkit/yandex_mapkit.dart';
+import 'package:geolocator/geolocator.dart'; // <--- 1. IMPORTANTE: GPS
 import '../models/search_models.dart';
 import '../services/api_service.dart';
 
@@ -28,18 +29,21 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scrollController = ScrollController();
-  final ApiService _apiService = ApiService(); // Instancia del servicio
+  final ApiService _apiService = ApiService();
   final List<ChatMessage> _messages = [];
   
   bool _isChatStarted = false;
   bool _isTyping = false;
   bool _isLoading = false; 
 
-  // --- VARIABLES NUEVAS DEL MAPA ---
+  // --- VARIABLES DEL MAPA Y GPS ---
   late YandexMapController _mapController;
   List<MapObject> _mapObjects = [];
-  // Ubicación inicial (Huanchaco)
-  final Point _userLocation = const Point(latitude: -8.0783, longitude: -79.1180);
+  
+  // 2. CAMBIO: Ya no es 'const', ahora es variable para actualizarla con el GPS
+  // Default: Huanchaco (mientras carga el GPS)
+  Point _userLocation = const Point(latitude: -8.0783, longitude: -79.1180);
+  bool _hasLocation = false; // Para saber si ya tenemos la ubicación real
 
   @override
   void initState() {
@@ -53,8 +57,57 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     });
     
-    // Dibujamos al usuario en el mapa desde el inicio
-    _updateMapMarkers([]);
+    // 3. CAMBIO: Llamamos a la función de obtener ubicación al iniciar
+    _getUserLocation();
+  }
+
+  // --- NUEVA LÓGICA DE GEOLOCALIZACIÓN ---
+  Future<void> _getUserLocation() async {
+    try {
+      // 1. Verificar si el GPS está prendido
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        // Podrías mostrar un aviso aquí para que activen el GPS
+        return;
+      }
+
+      // 2. Pedir permisos
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) return;
+      }
+      if (permission == LocationPermission.deniedForever) return;
+
+      // 3. Obtener posición actual
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high
+      );
+
+      // 4. Actualizar estado y mapa
+      setState(() {
+        _userLocation = Point(latitude: position.latitude, longitude: position.longitude);
+        _hasLocation = true;
+      });
+
+      // Actualizar el marcador del usuario en el mapa
+      _updateMapMarkers([]);
+
+      // Mover la cámara a la ubicación real
+      try {
+        _mapController.moveCamera(
+          CameraUpdate.newCameraPosition(
+            CameraPosition(target: _userLocation, zoom: 16),
+          ),
+          animation: const MapAnimation(type: MapAnimationType.smooth, duration: 1.5),
+        );
+      } catch (e) {
+        // Si el mapa aún no carga, no pasa nada
+      }
+
+    } catch (e) {
+      print("Error obteniendo GPS: $e");
+    }
   }
 
   @override
@@ -64,8 +117,6 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
-  // --- LÓGICA DEL MAPA (NUEVA) ---
-  
   void _updateMapMarkers(List<BodegaSearchResult> bodegas) {
     List<MapObject> newMarkers = [];
 
@@ -75,7 +126,10 @@ class _HomeScreenState extends State<HomeScreen> {
       circle: Circle(center: _userLocation, radius: 20),
       strokeColor: Colors.white,
       strokeWidth: 2,
-      fillColor: const Color(0xFF4D6FFF).withOpacity(0.9), // Tu color azul
+      // Si ya tenemos GPS real usamos azul, si no un gris indicando "esperando"
+      fillColor: _hasLocation 
+          ? const Color(0xFF4D6FFF).withOpacity(0.9) 
+          : Colors.grey.withOpacity(0.9),
       zIndex: 10,
     ));
 
@@ -92,7 +146,7 @@ class _HomeScreenState extends State<HomeScreen> {
         fillColor: Colors.redAccent.withOpacity(0.9),
         consumeTapEvents: true,
         onTap: (obj, point) {
-           // Opcional: Feedback al tocar
+           // Feedback táctil al tocar
         }
       ));
     }
@@ -117,7 +171,6 @@ class _HomeScreenState extends State<HomeScreen> {
       if (b.longitude > maxLon) maxLon = b.longitude;
     }
 
-    // Zoom inteligente
     _mapController.moveCamera(
       CameraUpdate.newBounds(
         BoundingBox(
@@ -129,7 +182,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // --- FUNCIÓN PARA CONSTRUIR EL HISTORIAL ---
   List<Map<String, String>> _buildHistoryPayload() {
     return _messages
         .where((m) => m.type == MessageType.user || m.type == MessageType.botResponse)
@@ -144,11 +196,16 @@ class _HomeScreenState extends State<HomeScreen> {
     final text = _controller.text.trim();
     if (text.isEmpty || _isLoading) return;
 
+    // Verificar si tenemos ubicación antes de buscar
+    if (!_hasLocation) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Espera, obteniendo tu ubicación... 📍"))
+      );
+      await _getUserLocation(); // Intentar obtenerla de nuevo rápido
+    }
+
     HapticFeedback.lightImpact();
     
-    // Capturamos historial antes de añadir el nuevo
-    final history = _buildHistoryPayload(); 
-
     setState(() {
       _isChatStarted = true;
       _isLoading = true;
@@ -160,20 +217,14 @@ class _HomeScreenState extends State<HomeScreen> {
     _scrollToBottom();
 
     try {
-      // Usamos tu ApiService existente, pero ahora pasamos coordenadas
-      final response = await _apiService.searchSmart(text, _userLocation.latitude, _userLocation.longitude); // Asumo que actualizaste ApiService para aceptar lat/lon
+      // 4. CAMBIO: Ahora se envían las coordenadas reales (_userLocation)
+      final response = await _apiService.searchSmart(text, _userLocation.latitude, _userLocation.longitude);
       
-      // NOTA: Si tu ApiService aún pide 'history', úsalo. 
-      // Si actualizaste searchSmart para pedir (query, lat, lon), usa la línea de arriba.
-      // Si searchSmart pide (query, history), usa: await ApiService.searchSmart(text, history);
-      
-      // --- ACTUALIZAR MAPA ---
       _updateMapMarkers(response.results);
       _moveCameraToFit(response.results);
-      // -----------------------
 
       setState(() {
-        _messages.removeLast(); // Quitamos "Pensando..."
+        _messages.removeLast();
         _messages.add(ChatMessage(
           type: MessageType.botResponse,
           text: response.message, 
@@ -186,7 +237,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _messages.removeLast();
         _messages.add(ChatMessage(
           type: MessageType.botResponse,
-          text: "Tuve un problema de conexión con las bodegas. ($e)",
+          text: "Tuve un problema buscando bodegas cercanas. ($e)",
           results: null,
         ));
       });
@@ -219,19 +270,13 @@ class _HomeScreenState extends State<HomeScreen> {
       resizeToAvoidBottomInset: false, 
       body: Stack(
         children: [
-          // 1. FONDO AMBIENTAL (Tu diseño original)
           const RepaintBoundary(child: AmbientBackground()),
 
-          // 2. CONTENIDO
           SafeArea(
             child: Column(
               children: [
                 _buildAppBar(),
-                
-                // --- NUEVO: SECCIÓN DEL MAPA ---
                 _buildMapSection(), 
-                // -------------------------------
-
                 Expanded(
                   child: !_isChatStarted ? _buildWelcomeView() : _buildChatList(),
                 ),
@@ -244,10 +289,9 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // --- WIDGET DEL MAPA (Nuevo) ---
   Widget _buildMapSection() {
     return Container(
-      height: 220, // Altura del minimapa
+      height: 220,
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(24),
@@ -258,18 +302,36 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(24),
-        child: YandexMap(
-          onMapCreated: (controller) {
-            _mapController = controller;
-            // Mover cámara inicial a Huanchaco
-            _mapController.moveCamera(
-              CameraUpdate.newCameraPosition(
-                CameraPosition(target: _userLocation, zoom: 15),
+        child: Stack(
+          children: [
+            YandexMap(
+              onMapCreated: (controller) {
+                _mapController = controller;
+                // Si ya tenemos ubicación al crear el mapa, nos movemos ahí
+                if (_hasLocation) {
+                   _mapController.moveCamera(
+                    CameraUpdate.newCameraPosition(
+                      CameraPosition(target: _userLocation, zoom: 16),
+                    ),
+                  );
+                }
+              },
+              mapObjects: _mapObjects,
+              nightModeEnabled: true,
+            ),
+            // Botón flotante para recentrar mapa (Opcional pero útil)
+            Positioned(
+              right: 10,
+              bottom: 10,
+              child: FloatingActionButton.small(
+                backgroundColor: const Color(0xFF2E335A),
+                child: const Icon(Icons.my_location, color: Colors.white),
+                onPressed: () {
+                   _getUserLocation();
+                },
               ),
-            );
-          },
-          mapObjects: _mapObjects,
-          nightModeEnabled: true, // ¡Modo oscuro para combinar con tu app!
+            )
+          ],
         ),
       ),
     );
@@ -310,8 +372,9 @@ class _HomeScreenState extends State<HomeScreen> {
               _messages.clear(); 
               _isChatStarted = false; 
               _isLoading = false;
-              _updateMapMarkers([]); // Limpiar mapa
+              _updateMapMarkers([]); 
             });
+            _getUserLocation(); // Recargar ubicación al refrescar
           }),
         ],
       ),
@@ -356,8 +419,9 @@ class _HomeScreenState extends State<HomeScreen> {
               child: const Icon(Icons.auto_awesome, size: 40, color: Colors.white),
             ),
             const SizedBox(height: 30),
-            const Text("Hola Vecino,",
-                style: TextStyle(color: Colors.white54, fontSize: 20, fontWeight: FontWeight.w300)),
+            // Texto dinámico según si tenemos ubicación
+            Text(_hasLocation ? "¡Ubicación detectada!" : "Buscando satélites...",
+                style: const TextStyle(color: Colors.white54, fontSize: 16, fontWeight: FontWeight.w300)),
             const SizedBox(height: 8),
             const Text("¿Qué pedimos hoy?",
                 style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold, letterSpacing: -0.5)),
@@ -425,7 +489,7 @@ class _HomeScreenState extends State<HomeScreen> {
         children: [
           const SizedBox(width: 15, height: 15, child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF4D6FFF))),
           const SizedBox(width: 12),
-          Text("Consultando en el barrio...", style: TextStyle(color: Colors.white.withOpacity(0.5), fontStyle: FontStyle.italic)),
+          Text("Consultando bodegas cercanas...", style: TextStyle(color: Colors.white.withOpacity(0.5), fontStyle: FontStyle.italic)),
         ],
       );
     } else {
@@ -459,6 +523,44 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  // --- NUEVA FUNCIÓN AUXILIAR: ARMA EL NOMBRE COMPLETO ---
+  String _formatItemName(ProductItem item) {
+    String fullName = item.name; // Ej: "Agua"
+    final attrs = item.attributes;
+
+    // 1. Marca
+    if (attrs.containsKey('marca')) {
+      fullName += ' ${attrs['marca']}'; // Ej: "Agua San Luis"
+    }
+
+    // 2. Gas (Lógica específica para bebidas)
+    if (attrs.containsKey('gas')) {
+      final val = attrs['gas'];
+      // Maneja si viene como bool (true) o string ("true")
+      bool hasGas = val == true || val.toString().toLowerCase() == 'true';
+      fullName += hasGas ? ' con gas' : ' sin gas';
+    }
+
+    // 3. Capacidad / Volumen / Peso
+    if (attrs.containsKey('capacidad')) {
+      fullName += ' ${attrs['capacidad']}'; // Ej: "Agua San Luis sin gas 1L"
+    } else if (attrs.containsKey('volumen')) {
+      fullName += ' ${attrs['volumen']}';
+    } else if (attrs.containsKey('peso')) {
+      fullName += ' ${attrs['peso']}';
+    }
+
+    // 4. Otros detalles (Opcional: Color, Talla, etc.)
+    attrs.forEach((key, value) {
+      if (!['marca', 'gas', 'capacidad', 'volumen', 'peso'].contains(key)) {
+        fullName += ' $value';
+      }
+    });
+
+    return fullName;
+  }
+
+  // --- REEMPLAZA ESTE WIDGET COMPLETO ---
   Widget _buildBodegaCard(BodegaSearchResult bodega) {
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
@@ -469,6 +571,7 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       child: Column(
         children: [
+          // CABECERA DE LA BODEGA (Igual que antes)
           Padding(
             padding: const EdgeInsets.all(16),
             child: Row(
@@ -488,27 +591,65 @@ class _HomeScreenState extends State<HomeScreen> {
                     ],
                   ),
                 ),
-                Text("S/ ${bodega.totalPrice.toStringAsFixed(2)}", 
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
+                // Precio Total Resaltado
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    const Text("Total", style: TextStyle(color: Colors.grey, fontSize: 10)),
+                    Text("S/ ${bodega.totalPrice.toStringAsFixed(2)}", 
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
+                  ],
+                ),
               ],
             ),
           ),
           Container(height: 1, color: Colors.white.withOpacity(0.05)),
           
+          // --- LISTA DE PRODUCTOS DETALLADA ---
           Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
-              children: bodega.foundItems.map((item) => Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Row(
-                  children: [
-                    Icon(Icons.check_circle_rounded, color: Colors.greenAccent.withOpacity(0.7), size: 16),
-                    const SizedBox(width: 8),
-                    Expanded(child: Text(item.name, style: TextStyle(color: Colors.grey[400], fontSize: 14))),
-                    Text(item.unit, style: TextStyle(color: Colors.grey[600], fontSize: 12)),
-                  ],
-                ),
-              )).toList(),
+              children: bodega.foundItems.map((item) {
+                // Usamos la nueva función para el nombre
+                final displayName = _formatItemName(item); 
+                
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Icono Check
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Icon(Icons.check_circle_rounded, color: Colors.greenAccent.withOpacity(0.7), size: 16),
+                      ),
+                      const SizedBox(width: 10),
+                      
+                      // Nombre Formateado (Agua San Luis sin gas 1L)
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              displayName, 
+                              style: const TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w500)
+                            ),
+                            // Si quieres mostrar la unidad original pequeña abajo
+                            if (item.unit != 'UND')
+                              Text("Unidad: ${item.unit}", style: TextStyle(color: Colors.grey[600], fontSize: 11)),
+                          ],
+                        ),
+                      ),
+                      
+                      // Precio Individual
+                      Text(
+                        "S/ ${item.price.toStringAsFixed(2)}", 
+                        style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
             ),
           )
         ],
@@ -571,7 +712,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-// --- FONDO ANIMADO (TU ORIGINAL) ---
+// --- FONDO ANIMADO ---
 class AmbientBackground extends StatefulWidget {
   const AmbientBackground({super.key});
   @override

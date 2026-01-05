@@ -10,40 +10,28 @@ router = APIRouter()
 @router.post("/smart", response_model=SmartSearchResponse)
 async def search_smart(request: SearchRequest, db: Session = Depends(get_db)):
     
-    # --- DEBUG 1: COORDENADAS ---
-    print(f"\n📍 [DEBUG] Ubicación recibida del usuario: {request.user_lat}, {request.user_lon}")
-    # ----------------------------
+    print(f"\n📍 [DEBUG] Ubicación recibida: {request.user_lat}, {request.user_lon}")
 
-    # 1. Interpretar intención CON HISTORIAL
+    # 1. Interpretar intención
     intent_json = await gemini_client.interpret_search_intent(
         request.query, 
         request.conversation_history
     )
-    
     keywords = [item.get("product_name", "") for item in intent_json]
-    
-    # --- DEBUG 2: LO QUE ENTENDIÓ GEMINI ---
-    print(f"🤖 [DEBUG] Gemini extrajo estas keywords: {keywords}")
-    # ---------------------------------------
+    print(f"🤖 [DEBUG] Gemini keywords: {keywords}")
 
-    # Caso charla (sin productos)
     if not keywords:
         msg = await gemini_client.generate_shopkeeper_response(
             request.query, 
-            "El cliente solo está conversando, no hay intención de compra clara aún."
+            "El cliente solo está conversando."
         )
         return SmartSearchResponse(message=msg, results=[])
 
-    # 2. Buscar en BD
+    # 2. Buscar en BD (Radio 1.5km por defecto)
     raw_results = InventoryRepository.search_products_smart(
         db, keywords, request.user_lat, request.user_lon
     )
-
-    # --- DEBUG 3: RESULTADOS CRUDOS DE LA BD ---
-    print(f"🔎 [DEBUG] La BD encontró {len(raw_results)} filas coincidentes.")
-    for i, (inv, prod, bodega) in enumerate(raw_results):
-        print(f"   Row {i}: Bodega='{bodega.name}' | Prod='{prod.name}' | Lat/Lon Bodega={bodega.latitude},{bodega.longitude}")
-    # -------------------------------------------
+    print(f"🔎 [DEBUG] BD encontró {len(raw_results)} filas.")
 
     # 3. Agrupar resultados
     bodegas_map = {}
@@ -51,9 +39,15 @@ async def search_smart(request: SearchRequest, db: Session = Depends(get_db)):
         if bodega.id not in bodegas_map:
             bodegas_map[bodega.id] = {"bodega": bodega, "items": [], "total": 0.0}
         
+        # --- FIX 1: AGREGAR LOS ATRIBUTOS AQUÍ ---
+        # Antes faltaba 'attributes=prod.attributes', por eso llegaba vacío.
         bodegas_map[bodega.id]["items"].append(ProductItem(
-            product_id=prod.id, name=prod.name, price=inv.price, 
-            stock=inv.stock_quantity, unit=prod.default_unit or "UND"
+            product_id=prod.id, 
+            name=prod.name, 
+            price=inv.price, 
+            stock=inv.stock_quantity, 
+            unit=prod.default_unit or "UND",
+            attributes=prod.attributes  # <--- ¡LA PIEZA FALTANTE! 🧩
         ))
         bodegas_map[bodega.id]["total"] += float(inv.price)
 
@@ -67,13 +61,20 @@ async def search_smart(request: SearchRequest, db: Session = Depends(get_db)):
         for item in found:
             all_found_products.add(item.name)
 
-        # OJO: Aquí forzamos distance_meters a 100 fijo, luego lo calcularemos real
+        # --- FIX 2: CALCULAR DISTANCIA REAL ---
+        # Usamos la misma función del repo para mostrar la distancia exacta en la tarjeta
+        dist_km = InventoryRepository.haversine(
+            request.user_lat, request.user_lon, 
+            float(data["bodega"].latitude), float(data["bodega"].longitude)
+        )
+        dist_meters = int(dist_km * 1000)
+
         response_list.append(BodegaSearchResult(
             bodega_id=data["bodega"].id,
             name=data["bodega"].name,
             latitude=float(data["bodega"].latitude),
             longitude=float(data["bodega"].longitude),
-            distance_meters=100, 
+            distance_meters=dist_meters, # <--- Ahora mostrará 200m, 500m, etc.
             is_open=True,
             completeness_score=completeness * 100,
             total_price=data["total"],
@@ -83,11 +84,11 @@ async def search_smart(request: SearchRequest, db: Session = Depends(get_db)):
 
     response_list.sort(key=lambda x: (-x.completeness_score, x.total_price))
 
-    # 4. Contexto para la respuesta humana
+    # 4. Respuesta Humana
     if response_list:
-        context_str = f"Se encontraron resultados en {len(response_list)} bodegas. Productos hallados: {', '.join(all_found_products)}."
+        context_str = f"Se encontraron {len(response_list)} bodegas. Productos: {', '.join(all_found_products)}."
     else:
-        context_str = "No se encontraron bodegas con stock para esos productos exactos."
+        context_str = "No se encontraron bodegas cercanas con stock exacto."
 
     bot_message = await gemini_client.generate_shopkeeper_response(request.query, context_str)
 

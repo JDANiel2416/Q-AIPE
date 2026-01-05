@@ -6,47 +6,48 @@ from math import radians, cos, sin, asin, sqrt
 class InventoryRepository:
 
     @staticmethod
-    def search_products_smart(db: Session, keywords: list[str], user_lat: float, user_lon: float, max_dist_km: float = 5.0):
+    def search_products_smart(db: Session, keywords: list[str], user_lat: float, user_lon: float, max_dist_km: float = 1.5): # <--- CAMBIO AQUÍ: 1.5
         """
-        Busca productos por coincidencia parcial en nombre, categoría o sinónimos.
-        Luego filtra por distancia.
+        Busca productos por coincidencia en nombre, categoría, sinónimos O ATRIBUTOS.
+        Filtra estrictamente en un radio de 1.5 km por defecto.
         """
         if not keywords:
             return []
 
-        # 1. Construimos la consulta base
+        search_terms = set()
+        for k in keywords:
+            search_terms.add(k) 
+            for word in k.split():
+                if len(word) > 2: 
+                    search_terms.add(word)
+        
+        # Consulta base: Bodegas abiertas o en automático (NULL)
         query = db.query(StoreInventory, MasterProduct, Bodega)\
             .join(MasterProduct, StoreInventory.product_id == MasterProduct.id)\
             .join(Bodega, StoreInventory.bodega_id == Bodega.id)\
-            .filter(Bodega.manual_override == 'OPEN') # Solo bodegas abiertas
+            .filter(or_(
+                Bodega.manual_override == 'OPEN',
+                Bodega.manual_override.is_(None)
+            ))
 
-        # 2. Filtro Inteligente (OR)
-        # Busca si ALGUNA de las palabras clave coincide con Nombre, Categoría o Sinónimos
         conditions = []
-        for word in keywords:
-            term = f"%{word}%" # Los % permiten buscar "Arroz" dentro de "Arroz Costeño"
-            
-            # Coincidencia en Nombre (Insensible a mayúsculas)
-            conditions.append(MasterProduct.name.ilike(term))
-            
-            # Coincidencia en Categoría
-            conditions.append(MasterProduct.category.ilike(term))
-            
-            # Coincidencia en Sinónimos (Truco: Convertimos el JSON a texto y buscamos dentro)
-            # Esto busca "arroz" dentro de '["arroz", "kilo de arroz"]'
-            conditions.append(cast(MasterProduct.synonyms, String).ilike(term))
+        for term in search_terms:
+            pattern = f"%{term}%" 
+            conditions.append(MasterProduct.name.ilike(pattern))
+            conditions.append(MasterProduct.category.ilike(pattern))
+            conditions.append(cast(MasterProduct.synonyms, String).ilike(pattern))
+            # Búsqueda en JSON (importante para encontrar "gas", "litro")
+            conditions.append(cast(MasterProduct.attributes, String).ilike(pattern))
 
-        query = query.filter(or_(*conditions))
+        if conditions:
+            query = query.filter(or_(*conditions))
 
-        # 3. Ejecutar consulta en BD
         raw_results = query.all()
         
-        # 4. Filtrar por Distancia (Haversine) en Python
-        # (Es más fácil y compatible que hacerlo en SQL puro sin extensiones geográficas)
         final_results = []
-        
         for inv, prod, bodega in raw_results:
             dist = InventoryRepository.haversine(user_lat, user_lon, bodega.latitude, bodega.longitude)
+            # Filtro estricto de distancia
             if dist <= max_dist_km:
                 final_results.append((inv, prod, bodega))
 
