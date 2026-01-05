@@ -101,6 +101,7 @@ class _LoginScreenState extends State<LoginScreen> {
         _removeThinking();
 
         if (res["success"] == true) {
+          await SessionService().saveSession((res["user_id"] ?? "").toString());
           _botSay("¡Bienvenido al barrio! 🚀\nEntrando...");
           await Future.delayed(const Duration(seconds: 1));
           

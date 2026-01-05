@@ -9,7 +9,7 @@ class ApiService {
     if (kIsWeb) return "http://127.0.0.1:8000/api/v1";
     
     // OJO: Cambia los X por tu IP real, ejemplo: 192.168.1.15
-    if (Platform.isAndroid) return "http://192.168.1.182:8000/api/v1"; 
+    if (Platform.isAndroid) return "http://192.168.1.48:8000/api/v1"; 
     
     return "http://127.0.0.1:8000/api/v1";
   }
