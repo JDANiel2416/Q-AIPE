@@ -1,64 +1,82 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
 from app.db.session import get_db
+from app.services.reniec_service import ReniecService
 from app.models.tables import User
-from app.services.reniec_service import reniec_client
+from pydantic import BaseModel
 
 router = APIRouter()
 
-# --- MODELOS (Solo para este archivo) ---
-class DniQuery(BaseModel):
+class ConsultRequest(BaseModel):
     dni: str
+
+class LoginRequest(BaseModel):
+    dni: str
+    password: str
 
 class RegisterRequest(BaseModel):
     dni: str
     password: str
     phone: str
-    role: str = "CLIENT" 
-
-# --- RUTAS ---
+    role: str = "CLIENT"
 
 @router.post("/consult_dni")
-async def consult_dni(query: DniQuery, db: Session = Depends(get_db)):
-    # 1. Validar si ya existe el usuario
-    existing = db.query(User).filter(User.dni == query.dni).first()
-    if existing:
-        # Si ya existe, devolvemos el nombre censurado para que sepa que es él
-        masked = reniec_client.obfuscate_name(existing.full_name)
-        return {"success": True, "masked_name": masked, "exists": True, "message": "Usuario ya registrado"}
+def consult_dni(req: ConsultRequest, db: Session = Depends(get_db)):
+    # 1. ¿El usuario YA existe en nuestra BD?
+    existing_user = db.query(User).filter(User.dni == req.dni).first()
+    
+    if existing_user:
+        # ¡SI EXISTE! Avisamos al frontend para que cambie a modo Login
+        return {
+            "success": True,
+            "masked_name": existing_user.full_name, # Ya tenemos el nombre real
+            "exists": True, # <--- ESTO ES LA CLAVE
+            "message": "Usuario ya registrado"
+        }
 
-    # 2. Consultar Reniec
-    reniec_data = await reniec_client.get_person_by_dni(query.dni)
-    if not reniec_data:
-        return {"success": False, "message": "DNI no encontrado"}
+    # 2. Si no existe, buscamos en RENIEC (Simulado o Real)
+    # Aquí podrías usar tu servicio real de Reniec si lo tienes activado
+    # Por ahora simulamos éxito para nuevos registros
+    return {
+        "success": True, 
+        "masked_name": "VECINO NUEVO", 
+        "exists": False, # <--- No existe, hay que registrarlo
+        "message": "¿Eres tú?"
+    }
 
-    # 3. Devolver nombre censurado
-    masked = reniec_client.obfuscate_name(reniec_data["full_name"])
-    return {"success": True, "masked_name": masked, "exists": False, "message": "¿Eres tú?"}
+@router.post("/login")
+def login(req: LoginRequest, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.dni == req.dni).first()
+    
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    
+    # Validación simple (En producción usarías hash tipo bcrypt)
+    if user.password_hash != req.password:
+        raise HTTPException(status_code=401, detail="Contraseña incorrecta")
+        
+    return {
+        "success": True, 
+        "user_id": str(user.id),
+        "name": user.full_name,
+        "role": user.role
+    }
 
 @router.post("/register")
-async def register_user(req: RegisterRequest, db: Session = Depends(get_db)):
-    # 1. Doble verificación de duplicados
+def register(req: RegisterRequest, db: Session = Depends(get_db)):
     if db.query(User).filter(User.dni == req.dni).first():
-        raise HTTPException(status_code=400, detail="DNI ya registrado")
-    
-    # 2. Obtener nombre real (No confiamos en el frontend)
-    reniec_data = await reniec_client.get_person_by_dni(req.dni)
-    if not reniec_data:
-        raise HTTPException(status_code=400, detail="Error de identidad")
+        raise HTTPException(status_code=400, detail="El DNI ya está registrado")
 
-    # 3. Guardar en DB
     new_user = User(
         dni=req.dni,
-        full_name=reniec_data["full_name"], # Guardamos el nombre COMPLETO
-        password_hash=req.password,         
+        full_name=f"Usuario {req.dni}", # O el nombre de Reniec si lo tuvieras
+        password_hash=req.password,
         phone_number=req.phone,
         role=req.role,
         is_verified=True
     )
-    
     db.add(new_user)
     db.commit()
+    db.refresh(new_user)
     
-    return {"success": True, "message": "Bienvenido al barrio", "user_id": str(new_user.id)}
+    return {"success": True, "user_id": str(new_user.id)}

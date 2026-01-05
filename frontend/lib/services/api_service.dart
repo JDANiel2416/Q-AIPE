@@ -101,4 +101,56 @@ Future<Map<String, dynamic>> consultDni(String dni) async {
     }
   }
 
+  Future<List<dynamic>> getMyInventory(String userId) async {
+    final url = Uri.parse('$baseUrl/bodeguero/my-inventory?user_id=$userId');
+    try {
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        return jsonDecode(utf8.decode(response.bodyBytes));
+      }
+      return [];
+    } catch (e) {
+      print("Error fetching inventory: $e");
+      return [];
+    }
+  }
+
+  Future<bool> toggleStock(String userId, int productId, bool inStock) async {
+    final url = Uri.parse('$baseUrl/bodeguero/toggle-stock?user_id=$userId');
+    try {
+      final response = await http.post(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "product_id": productId,
+          "in_stock": inStock
+        }),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  Future<Map<String, dynamic>> loginUser(String dni, String password) async {
+    final url = Uri.parse('$baseUrl/auth/login');
+    try {
+      final response = await http.post(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({"dni": dni, "password": password}),
+      );
+
+      final data = jsonDecode(utf8.decode(response.bodyBytes));
+      
+      if (response.statusCode == 200) {
+        return data; // Retorna success: true, user_id, etc.
+      } else {
+        return {"success": false, "message": data["detail"] ?? "Error de acceso"};
+      }
+    } catch (e) {
+      return {"success": false, "message": "Error: $e"};
+    }
+  }
+
 }
