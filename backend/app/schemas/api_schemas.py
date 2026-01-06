@@ -23,8 +23,11 @@ class ProductItem(BaseModel):
     stock: float
     unit: str
     
-    # NUEVO: Para devolver las características al frontend
+    # Detalle del producto
     attributes: Optional[Dict[str, Any]] = {} 
+    
+    # NUEVO: La cantidad que pidió el usuario (Ej: 2, 3)
+    requested_quantity: int = 1 
 
     class Config:
         from_attributes = True

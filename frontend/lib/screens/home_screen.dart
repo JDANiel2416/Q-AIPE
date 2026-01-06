@@ -610,7 +610,6 @@ class _HomeScreenState extends State<HomeScreen> {
             padding: const EdgeInsets.all(16),
             child: Column(
               children: bodega.foundItems.map((item) {
-                // Usamos la nueva función para el nombre
                 final displayName = _formatItemName(item); 
                 
                 return Padding(
@@ -618,14 +617,27 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Icono Check
+                      // --- COLUMNA IZQUIERDA: ICONO O CANTIDAD ---
                       Padding(
-                        padding: const EdgeInsets.only(top: 2),
-                        child: Icon(Icons.check_circle_rounded, color: Colors.greenAccent.withOpacity(0.7), size: 16),
+                        padding: const EdgeInsets.only(top: 2, right: 10),
+                        child: item.requestedQuantity > 1 
+                          // Si piden más de 1, mostramos un globito azul "x2"
+                          ? Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF4D6FFF),
+                                borderRadius: BorderRadius.circular(6)
+                              ),
+                              child: Text(
+                                "x${item.requestedQuantity}", 
+                                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)
+                              ),
+                            )
+                          // Si es 1, mostramos el check normal
+                          : Icon(Icons.check_circle_rounded, color: Colors.greenAccent.withOpacity(0.7), size: 16),
                       ),
-                      const SizedBox(width: 10),
                       
-                      // Nombre Formateado (Agua San Luis sin gas 1L)
+                      // --- COLUMNA CENTRAL: NOMBRE ---
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -634,18 +646,26 @@ class _HomeScreenState extends State<HomeScreen> {
                               displayName, 
                               style: const TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w500)
                             ),
-                            // Si quieres mostrar la unidad original pequeña abajo
-                            if (item.unit != 'UND')
-                              Text("Unidad: ${item.unit}", style: TextStyle(color: Colors.grey[600], fontSize: 11)),
                           ],
                         ),
                       ),
                       
-                      // Precio Individual
-                      Text(
-                        "S/ ${item.price.toStringAsFixed(2)}", 
-                        style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)
-                      ),
+                      // --- COLUMNA DERECHA: PRECIO ---
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          // Mostramos precio unitario
+                          Text("S/ ${item.price.toStringAsFixed(2)}", 
+                            style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
+                          
+                          // Si quieres mostrar el subtotal (2 * 2.50 = 5.00) opcionalmente:
+                          if (item.requestedQuantity > 1)
+                            Text(
+                              "Total: S/ ${(item.price * item.requestedQuantity).toStringAsFixed(2)}",
+                              style: TextStyle(color: Colors.grey[500], fontSize: 10)
+                            ),
+                        ],
+                      )
                     ],
                   ),
                 );
