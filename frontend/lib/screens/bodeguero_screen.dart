@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
+import 'dart:ui' as ui;
 import '../services/api_service.dart';
 import '../services/session_service.dart';
 import 'login_screen.dart';
-import 'add_product_screen.dart'; // <--- IMPORTANTE: Importa la nueva pantalla
+import 'add_product_screen.dart';
 
 class BodegueroScreen extends StatefulWidget {
   const BodegueroScreen({super.key});
@@ -24,7 +25,7 @@ class _BodegueroScreenState extends State<BodegueroScreen> {
   }
 
   Future<void> _loadData() async {
-    setState(() => _isLoading = true); // Muestra carga al refrescar
+    setState(() => _isLoading = true);
     final uid = await SessionService().getUserId();
     if (uid != null) {
       _userId = uid;
@@ -37,32 +38,30 @@ class _BodegueroScreenState extends State<BodegueroScreen> {
   }
 
   void _toggleProduct(int index, bool value) async {
-    // 1. Actualización optimista
     setState(() {
       _products[index]['in_stock'] = value;
     });
 
-    // 2. Llamada al backend
     final success = await _api.toggleStock(_userId, _products[index]['product_id'], value);
     
-    // 3. Revertir si falla
     if (!success) {
       setState(() {
         _products[index]['in_stock'] = !value;
       });
-      if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Error de conexión")));
+      if(mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Error de conexión"), backgroundColor: Colors.redAccent)
+        );
+      }
     }
   }
 
-  // --- NUEVA FUNCIÓN PARA IR A AGREGAR ---
   void _navigateToAddProduct() async {
-    // Push devuelve el resultado cuando hacemos Navigator.pop(context, true)
     final bool? result = await Navigator.push(
       context, 
       MaterialPageRoute(builder: (_) => const AddProductScreen())
     );
 
-    // Si result es true, significa que se agregó algo y debemos recargar
     if (result == true) {
       _loadData();
     }
@@ -71,51 +70,268 @@ class _BodegueroScreenState extends State<BodegueroScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("Mi Bodega 🏪"),
-        backgroundColor: Colors.orange[800],
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () async {
-              await SessionService().logout();
-              Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
-            },
-          )
+      backgroundColor: const Color(0xFF0A0E1A),
+      body: Stack(
+        children: [
+          const MinimalistBackground(),
+          
+          SafeArea(
+            child: Column(
+              children: [
+                _buildCustomAppBar(),
+                Expanded(
+                  child: _isLoading
+                      ? const Center(child: CircularProgressIndicator(color: Color(0xFF00D9FF)))
+                      : _products.isEmpty 
+                        ? _buildEmptyState()
+                        : _buildProductList(),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
-      // --- BOTÓN FLOTANTE NUEVO ---
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _navigateToAddProduct,
-        label: const Text("Agregar Producto"),
+        label: const Text("Agregar Producto", style: TextStyle(fontWeight: FontWeight.bold)),
         icon: const Icon(Icons.add),
-        backgroundColor: Colors.orange[800],
+        backgroundColor: const Color(0xFF00D9FF),
+        foregroundColor: Colors.white,
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _products.isEmpty 
-            ? const Center(child: Text("No tienes productos. ¡Agrega uno!"))
-            : ListView.builder(
-              itemCount: _products.length,
-              itemBuilder: (ctx, i) {
-                final prod = _products[i];
-                return Card(
-                  color: Colors.white10, // Ojo: Si usas tema claro, esto puede verse muy tenue
-                  margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                  child: SwitchListTile(
-                    activeColor: Colors.greenAccent,
-                    title: Text(prod['name'], style: const TextStyle(fontWeight: FontWeight.bold)),
-                    subtitle: Text("S/ ${prod['price'].toStringAsFixed(2)} | Stock: ${prod['stock']}"),
-                    value: prod['in_stock'],
-                    onChanged: (val) => _toggleProduct(i, val),
-                    secondary: Icon(
-                      prod['in_stock'] ? Icons.check_circle : Icons.remove_circle_outline,
-                      color: prod['in_stock'] ? Colors.green : Colors.grey,
+    );
+  }
+
+  Widget _buildCustomAppBar() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF00D9FF).withOpacity(0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.store, color: Color(0xFF00D9FF), size: 24),
+              ),
+              const SizedBox(width: 12),
+              const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    "Mi Bodega",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 20,
                     ),
                   ),
+                  Text(
+                    "Panel de Inventario",
+                    style: TextStyle(color: Color(0xFFA0A8B8), fontSize: 12),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          GestureDetector(
+            onTap: () async {
+              await SessionService().logout();
+              if (mounted) {
+                Navigator.pushReplacement(
+                  context, 
+                  MaterialPageRoute(builder: (_) => const LoginScreen())
                 );
-              },
+              }
+            },
+            child: Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.08),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.logout, color: Colors.white70, size: 20),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            height: 80,
+            width: 80,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: const Color(0xFF00D9FF).withOpacity(0.15),
+            ),
+            child: const Icon(Icons.inventory_2_outlined, size: 40, color: Color(0xFF00D9FF)),
+          ),
+          const SizedBox(height: 20),
+          const Text(
+            "No tienes productos",
+            style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            "¡Agrega tu primer producto!",
+            style: TextStyle(color: Color(0xFFA0A8B8), fontSize: 14),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProductList() {
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      itemCount: _products.length,
+      itemBuilder: (ctx, i) {
+        final prod = _products[i];
+        final bool inStock = prod['in_stock'];
+        
+        return Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1A1F2E).withOpacity(0.7),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Colors.white.withOpacity(0.1)),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: inStock 
+                        ? const Color(0xFF00D9FF).withOpacity(0.15)
+                        : Colors.grey.withOpacity(0.15),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    inStock ? Icons.check_circle : Icons.remove_circle_outline,
+                    color: inStock ? const Color(0xFF00D9FF) : Colors.grey,
+                    size: 24,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        prod['name'],
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Text(
+                            "S/ ${prod['price'].toStringAsFixed(2)}",
+                            style: const TextStyle(
+                              color: Color(0xFF00D9FF),
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            "Stock: ${prod['stock']}",
+                            style: const TextStyle(
+                              color: Color(0xFFA0A8B8),
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                Switch(
+                  value: inStock,
+                  onChanged: (val) => _toggleProduct(i, val),
+                  activeColor: const Color(0xFF00D9FF),
+                  activeTrackColor: const Color(0xFF00D9FF).withOpacity(0.3),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+// --- FONDO MINIMALISTA ESTÁTICO ---
+class MinimalistBackground extends StatelessWidget {
+  const MinimalistBackground({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color(0xFF0A0E1A),
+            Color(0xFF0F1419),
+            Color(0xFF0A0E1A),
+          ],
+          stops: [0.0, 0.5, 1.0],
+        ),
+      ),
+      child: Stack(
+        children: [
+          Positioned(
+            top: -100,
+            right: -100,
+            child: Container(
+              width: 300,
+              height: 300,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: RadialGradient(
+                  colors: [
+                    const Color(0xFF00D9FF).withOpacity(0.05),
+                    Colors.transparent,
+                  ],
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            bottom: -100,
+            left: -100,
+            child: Container(
+              width: 300,
+              height: 300,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: RadialGradient(
+                  colors: [
+                    const Color(0xFF00D9FF).withOpacity(0.03),
+                    Colors.transparent,
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

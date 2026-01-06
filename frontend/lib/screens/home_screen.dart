@@ -7,6 +7,8 @@ import 'package:yandex_mapkit/yandex_mapkit.dart';
 import 'package:geolocator/geolocator.dart'; // <--- 1. IMPORTANTE: GPS
 import '../models/search_models.dart';
 import '../services/api_service.dart';
+import '../services/session_service.dart'; // <--- IMPORTANTE: Para Logout
+import 'login_screen.dart'; // <--- Para redirigir al salir
 
 // --- MODELOS ---
 enum MessageType { user, botThinking, botResponse }
@@ -27,6 +29,9 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  // --- 1. NUEVO: Key para controlar el menú lateral ---
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final ApiService _apiService = ApiService();
@@ -37,13 +42,22 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isLoading = false; 
 
   // --- VARIABLES DEL MAPA Y GPS ---
-  late YandexMapController _mapController;
+  YandexMapController? _mapController; // Nullable porque se inicializa al abrir el modal
   List<MapObject> _mapObjects = [];
   
   // 2. CAMBIO: Ya no es 'const', ahora es variable para actualizarla con el GPS
   // Default: Huanchaco (mientras carga el GPS)
   Point _userLocation = const Point(latitude: -8.0783, longitude: -79.1180);
   bool _hasLocation = false; // Para saber si ya tenemos la ubicación real
+
+  // --- NUEVO: Variables para control de scroll ---
+  bool _showScrollDownButton = false;
+  bool _isAtBottom = true;
+  double _lastKeyboardHeight = 0;
+
+  // --- NUEVO: Variable para controlar el mapa flotante ---
+  bool _isMapExpanded = false;
+  BodegaSearchResult? _selectedBodega; // Para centrar el mapa en una bodega específica
 
   @override
   void initState() {
@@ -57,8 +71,33 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     });
     
+    // Listener para detectar posición del scroll
+    _scrollController.addListener(_onScroll);
+    
     // 3. CAMBIO: Llamamos a la función de obtener ubicación al iniciar
     _getUserLocation();
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    
+    final maxScroll = _scrollController.position.maxScrollExtent;
+    final currentScroll = _scrollController.position.pixels;
+    final threshold = 100.0;
+    
+    final isNearBottom = (maxScroll - currentScroll) < threshold;
+    
+    // Solo actualizar si cambia el estado para evitar rebuilds innecesarios
+    if (_isAtBottom != isNearBottom) {
+      _isAtBottom = isNearBottom;
+      final shouldShow = !isNearBottom && _isChatStarted;
+      
+      if (_showScrollDownButton != shouldShow) {
+        setState(() {
+          _showScrollDownButton = shouldShow;
+        });
+      }
+    }
   }
 
   // --- NUEVA LÓGICA DE GEOLOCALIZACIÓN ---
@@ -94,15 +133,17 @@ class _HomeScreenState extends State<HomeScreen> {
       _updateMapMarkers([]);
 
       // Mover la cámara a la ubicación real
-      try {
-        _mapController.moveCamera(
-          CameraUpdate.newCameraPosition(
-            CameraPosition(target: _userLocation, zoom: 16),
-          ),
-          animation: const MapAnimation(type: MapAnimationType.smooth, duration: 1.5),
-        );
-      } catch (e) {
-        // Si el mapa aún no carga, no pasa nada
+      if (_mapController != null) {
+        try {
+          _mapController!.moveCamera(
+            CameraUpdate.newCameraPosition(
+              CameraPosition(target: _userLocation, zoom: 16),
+            ),
+            animation: const MapAnimation(type: MapAnimationType.smooth, duration: 1.5),
+          );
+        } catch (e) {
+          // Si hay error, no pasa nada
+        }
       }
 
     } catch (e) {
@@ -126,9 +167,9 @@ class _HomeScreenState extends State<HomeScreen> {
       circle: Circle(center: _userLocation, radius: 20),
       strokeColor: Colors.white,
       strokeWidth: 2,
-      // Si ya tenemos GPS real usamos azul, si no un gris indicando "esperando"
+      // Si ya tenemos GPS real usamos cyan, si no un gris indicando "esperando"
       fillColor: _hasLocation 
-          ? const Color(0xFF4D6FFF).withOpacity(0.9) 
+          ? const Color(0xFF00D9FF).withOpacity(0.9) 
           : Colors.grey.withOpacity(0.9),
       zIndex: 10,
     ));
@@ -157,7 +198,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _moveCameraToFit(List<BodegaSearchResult> bodegas) {
-    if (bodegas.isEmpty) return;
+    if (bodegas.isEmpty || _mapController == null) return;
 
     double minLat = _userLocation.latitude;
     double maxLat = _userLocation.latitude;
@@ -171,11 +212,26 @@ class _HomeScreenState extends State<HomeScreen> {
       if (b.longitude > maxLon) maxLon = b.longitude;
     }
 
-    _mapController.moveCamera(
+    _mapController!.moveCamera(
       CameraUpdate.newBounds(
         BoundingBox(
           northEast: Point(latitude: maxLat + 0.002, longitude: maxLon + 0.002),
           southWest: Point(latitude: minLat - 0.002, longitude: minLon - 0.002),
+        ),
+      ),
+      animation: const MapAnimation(type: MapAnimationType.smooth, duration: 1.0),
+    );
+  }
+
+  // Nuevo método para centrar el mapa en una ubicación específica
+  void _centerMapOnLocation(double lat, double lon) {
+    if (_mapController == null) return;
+    
+    _mapController!.moveCamera(
+      CameraUpdate.newCameraPosition(
+        CameraPosition(
+          target: Point(latitude: lat, longitude: lon),
+          zoom: 17, // Zoom más cercano para ver la bodega
         ),
       ),
       animation: const MapAnimation(type: MapAnimationType.smooth, duration: 1.0),
@@ -251,96 +307,214 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  void _scrollToBottom() {
+  void _scrollToBottom({bool animated = true}) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 400),
-          curve: Curves.easeOutQuad,
-        );
+        if (animated) {
+          _scrollController.animateTo(
+            _scrollController.position.maxScrollExtent,
+            duration: const Duration(milliseconds: 400),
+            curve: Curves.easeOutQuad,
+          );
+        } else {
+          _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+        }
       }
     });
   }
 
+  // --- 2. NUEVO: WIDGET DEL DRAWER (Menú Lateral) ---
+  Widget _buildModernDrawer() {
+    return BackdropFilter(
+      filter: ui.ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+      child: Container(
+        width: MediaQuery.of(context).size.width * 0.75, // Ocupa el 75% del ancho
+        height: double.infinity,
+        decoration: BoxDecoration(
+          color: const Color(0xFF0A0E1A).withOpacity(0.98),
+          border: const Border(right: BorderSide(color: Colors.white10)),
+        ),
+        child: SafeArea(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // HEADER DEL PERFIL
+              Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(3),
+                      decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0xFF00D9FF)),
+                      child: const CircleAvatar(
+                        radius: 30,
+                        backgroundColor: Color(0xFF0A0E1A),
+                        child: Icon(Icons.person, color: Colors.white, size: 30),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    const Text("Usuario Cliente", style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                    const Text("Verificado RENIEC ✅", style: TextStyle(color: Color(0xFFA0A8B8), fontSize: 12)),
+                  ],
+                ),
+              ),
+              const Divider(color: Colors.white10),
+              
+              // OPCIONES DEL MENÚ
+              Expanded(
+                child: ListView(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  children: [
+                    _buildDrawerItem(Icons.history, "Historial de Pedidos", () {}),
+                    _buildDrawerItem(Icons.chat_bubble_outline, "Mis Chats", () {}),
+                    _buildDrawerItem(Icons.favorite_border, "Favoritos", () {}),
+                    _buildDrawerItem(Icons.place_outlined, "Mis Direcciones", () {}),
+                    const Divider(color: Colors.white10, height: 30),
+                    _buildDrawerItem(Icons.settings_outlined, "Configuración", () {}),
+                    _buildDrawerItem(Icons.help_outline, "Ayuda y Soporte", () {}),
+                  ],
+                ),
+              ),
+              
+              // BOTÓN CERRAR SESIÓN
+              Padding(
+                padding: const EdgeInsets.all(24),
+                child: InkWell(
+                  onTap: () async {
+                    await SessionService().logout();
+                    if (mounted) {
+                      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
+                    }
+                  },
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                    decoration: BoxDecoration(
+                      color: Colors.redAccent.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.redAccent.withOpacity(0.3))
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: const [
+                        Icon(Icons.logout, color: Colors.redAccent, size: 20),
+                        SizedBox(width: 10),
+                        Text("Cerrar Sesión", style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                  ),
+                ),
+              )
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDrawerItem(IconData icon, String title, VoidCallback onTap) {
+    return ListTile(
+      leading: Icon(icon, color: Colors.white70, size: 22),
+      title: Text(title, style: const TextStyle(color: Colors.white, fontSize: 15)),
+      onTap: onTap,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      hoverColor: Colors.white.withOpacity(0.05),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+    );
+  }
+
+  
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0F111A),
+      key: _scaffoldKey, // <--- 3. ASIGNAR LA KEY AQUÍ
+      drawer: _buildModernDrawer(), // <--- 4. ASIGNAR EL DRAWER AQUÍ
+      backgroundColor: const Color(0xFF0A0E1A),
       resizeToAvoidBottomInset: false, 
       body: Stack(
         children: [
-          const RepaintBoundary(child: AmbientBackground()),
+          const MinimalistBackground(),
 
           SafeArea(
             child: Column(
               children: [
                 _buildAppBar(),
-                _buildMapSection(), 
                 Expanded(
-                  child: !_isChatStarted ? _buildWelcomeView() : _buildChatList(),
+                  child: Stack(
+                    children: [
+                      !_isChatStarted ? _buildWelcomeView() : _buildChatList(),
+                      
+                      // Botón flotante para bajar al final
+                      if (_showScrollDownButton)
+                        Positioned(
+                          bottom: 16,
+                          right: 16,
+                          child: RepaintBoundary(
+                            child: GestureDetector(
+                              onTap: () => _scrollToBottom(),
+                              child: Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF00D9FF),
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: const Color(0xFF00D9FF).withOpacity(0.3),
+                                      blurRadius: 10,
+                                      offset: const Offset(0, 4),
+                                    )
+                                  ],
+                                ),
+                                child: const Icon(
+                                  Icons.keyboard_arrow_down_rounded,
+                                  color: Colors.white,
+                                  size: 24,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
                 _buildInputAreaWrapper(context),
               ],
             ),
           ),
+          
+          // Modal del mapa expandido
+          if (_isMapExpanded)
+            _buildMapOverlay(),
         ],
-      ),
-    );
-  }
-
-  Widget _buildMapSection() {
-    return Container(
-      height: 220,
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.white.withOpacity(0.1)),
-        boxShadow: [
-           BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 15, offset: const Offset(0, 5))
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(24),
-        child: Stack(
-          children: [
-            YandexMap(
-              onMapCreated: (controller) {
-                _mapController = controller;
-                // Si ya tenemos ubicación al crear el mapa, nos movemos ahí
-                if (_hasLocation) {
-                   _mapController.moveCamera(
-                    CameraUpdate.newCameraPosition(
-                      CameraPosition(target: _userLocation, zoom: 16),
-                    ),
-                  );
-                }
-              },
-              mapObjects: _mapObjects,
-              nightModeEnabled: true,
-            ),
-            // Botón flotante para recentrar mapa (Opcional pero útil)
-            Positioned(
-              right: 10,
-              bottom: 10,
-              child: FloatingActionButton.small(
-                backgroundColor: const Color(0xFF2E335A),
-                child: const Icon(Icons.my_location, color: Colors.white),
-                onPressed: () {
-                   _getUserLocation();
-                },
-              ),
-            )
-          ],
-        ),
       ),
     );
   }
 
   Widget _buildInputAreaWrapper(BuildContext context) {
     final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
+    
+    // Auto-scroll cuando el teclado se abre (igual que WhatsApp/Telegram)
+    if (keyboardHeight > 0 && _lastKeyboardHeight == 0 && _isChatStarted) {
+      // Primer frame: esperar que el layout se actualice
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        // Segundo frame: ahora sí hacer el scroll con el nuevo maxScrollExtent
+        Future.delayed(const Duration(milliseconds: 50), () {
+          if (mounted && _scrollController.hasClients) {
+            _scrollController.animateTo(
+              _scrollController.position.maxScrollExtent,
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeOut,
+            );
+          }
+        });
+      });
+    }
+    _lastKeyboardHeight = keyboardHeight;
+    
     return AnimatedContainer(
-      duration: const Duration(milliseconds: 100),
+      duration: const Duration(milliseconds: 200),
       curve: Curves.easeOut,
       padding: EdgeInsets.only(
         left: 16, 
@@ -352,30 +526,141 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // Nuevo widget: Overlay del mapa en pantalla completa
+  Widget _buildMapOverlay() {
+    return AnimatedOpacity(
+      opacity: 1.0,
+      duration: const Duration(milliseconds: 300),
+      child: GestureDetector(
+        onTap: () => setState(() => _isMapExpanded = false),
+        child: Container(
+          color: Colors.black.withOpacity(0.7),
+          child: SafeArea(
+            child: Center(
+              child: GestureDetector(
+                onTap: () {}, // Evitar que el tap cierre cuando tocas el mapa
+                child: Container(
+                  margin: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(24),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.3),
+                        blurRadius: 30,
+                        offset: const Offset(0, 10),
+                      )
+                    ],
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(24),
+                    child: Stack(
+                      children: [
+                        // El mapa
+                        SizedBox(
+                          height: MediaQuery.of(context).size.height * 0.7,
+                          width: double.infinity,
+                          child: YandexMap(
+                            onMapCreated: (controller) {
+                              _mapController = controller;
+                              
+                              // Si hay una bodega seleccionada, centrar en ella
+                              if (_selectedBodega != null) {
+                                Future.delayed(const Duration(milliseconds: 300), () {
+                                  _centerMapOnLocation(
+                                    _selectedBodega!.latitude,
+                                    _selectedBodega!.longitude,
+                                  );
+                                });
+                              } else if (_hasLocation) {
+                                _mapController?.moveCamera(
+                                  CameraUpdate.newCameraPosition(
+                                    CameraPosition(target: _userLocation, zoom: 16),
+                                  ),
+                                );
+                              }
+                            },
+                            mapObjects: _mapObjects,
+                            nightModeEnabled: true,
+                          ),
+                        ),
+                        
+                        // Botón de cerrar
+                        Positioned(
+                          top: 16,
+                          right: 16,
+                          child: GestureDetector(
+                            onTap: () => setState(() => _isMapExpanded = false),
+                            child: Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF1A1F2E),
+                                shape: BoxShape.circle,
+                                border: Border.all(color: Colors.white.withOpacity(0.1)),
+                              ),
+                              child: const Icon(Icons.close, color: Colors.white, size: 20),
+                            ),
+                          ),
+                        ),
+                        
+                        // Botón de GPS
+                        Positioned(
+                          right: 16,
+                          bottom: 16,
+                          child: FloatingActionButton.small(
+                            backgroundColor: const Color(0xFF1A1F2E),
+                            child: const Icon(Icons.my_location, color: Color(0xFF00D9FF)),
+                            onPressed: _getUserLocation,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildAppBar() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          _buildCircleBtn(Icons.grid_view_rounded, () {}),
+          // 5. MODIFICADO: EL BOTÓN AHORA ABRE EL DRAWER
+          _buildCircleBtn(Icons.grid_view_rounded, () {
+            _scaffoldKey.currentState?.openDrawer();
+          }),
+          
           const Text(
             "Q-AIPE",
-            style: TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 2.0,
-                fontSize: 13),
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, letterSpacing: 2.0, fontSize: 13),
           ),
-          _buildCircleBtn(Icons.refresh_rounded, () {
-            setState(() { 
-              _messages.clear(); 
-              _isChatStarted = false; 
-              _isLoading = false;
-              _updateMapMarkers([]); 
-            });
-            _getUserLocation(); // Recargar ubicación al refrescar
-          }),
+          
+          Row(
+            children: [
+              // Botón de mapa flotante
+              _buildCircleBtn(Icons.map_outlined, () {
+                setState(() {
+                  _selectedBodega = null; // Reset selección al abrir mapa general
+                  _isMapExpanded = true;
+                });
+              }),
+              const SizedBox(width: 8),
+              _buildCircleBtn(Icons.refresh_rounded, () {
+                setState(() { 
+                  _messages.clear(); 
+                  _isChatStarted = false; 
+                  _isLoading = false;
+                  _updateMapMarkers([]); 
+                });
+                _getUserLocation();
+              }),
+            ],
+          ),
         ],
       ),
     );
@@ -412,9 +697,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight
                 ),
-                boxShadow: [
-                  BoxShadow(color: const Color(0xFF4D6FFF).withOpacity(0.3), blurRadius: 50, spreadRadius: 1)
-                ]
+                 boxShadow: [
+                   BoxShadow(color: const Color(0xFF00D9FF).withOpacity(0.2), blurRadius: 40, spreadRadius: 0)
+                 ]
               ),
               child: const Icon(Icons.auto_awesome, size: 40, color: Colors.white),
             ),
@@ -432,32 +717,33 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildChatList() {
-    return ListView.builder(
-      controller: _scrollController,
-      physics: const BouncingScrollPhysics(),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
-      itemCount: _messages.length,
-      itemBuilder: (context, index) => _buildMessageItem(_messages[index]),
+    return RepaintBoundary(
+      child: ListView.builder(
+        controller: _scrollController,
+        physics: const BouncingScrollPhysics(),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+        itemCount: _messages.length,
+        itemBuilder: (context, index) => _buildMessageItem(_messages[index]),
+      ),
     );
   }
 
   Widget _buildMessageItem(ChatMessage msg) {
-    return TweenAnimationBuilder(
-      duration: const Duration(milliseconds: 400),
-      curve: Curves.easeOutBack,
-      tween: Tween<double>(begin: 0, end: 1),
-      builder: (context, double value, child) {
-        return Transform.scale(
-          scale: 0.95 + (0.05 * value),
-          child: Opacity(
+    return RepaintBoundary(
+      child: TweenAnimationBuilder(
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+        tween: Tween<double>(begin: 0, end: 1),
+        builder: (context, double value, child) {
+          return Opacity(
             opacity: value.clamp(0.0, 1.0), 
             child: child
-          ),
-        );
-      },
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: _contentForMessage(msg),
+          );
+        },
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: _contentForMessage(msg),
+        ),
       ),
     );
   }
@@ -470,16 +756,14 @@ class _HomeScreenState extends State<HomeScreen> {
           constraints: const BoxConstraints(maxWidth: 300),
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
           decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [Color(0xFF2E335A), Color(0xFF1C1F33)],
-            ),
+            color: const Color(0xFF1A1F2E),
             borderRadius: const BorderRadius.only(
               topLeft: Radius.circular(20),
               topRight: Radius.circular(4),
               bottomLeft: Radius.circular(20),
               bottomRight: Radius.circular(20),
             ),
-            border: Border.all(color: Colors.white.withOpacity(0.1)),
+            border: Border.all(color: const Color(0xFF00D9FF).withOpacity(0.3), width: 1),
           ),
           child: Text(msg.text ?? "", style: const TextStyle(color: Colors.white, fontSize: 16)),
         ),
@@ -487,7 +771,7 @@ class _HomeScreenState extends State<HomeScreen> {
     } else if (msg.type == MessageType.botThinking) {
       return Row(
         children: [
-          const SizedBox(width: 15, height: 15, child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF4D6FFF))),
+          const SizedBox(width: 15, height: 15, child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF00D9FF))),
           const SizedBox(width: 12),
           Text("Consultando bodegas cercanas...", style: TextStyle(color: Colors.white.withOpacity(0.5), fontStyle: FontStyle.italic)),
         ],
@@ -501,14 +785,14 @@ class _HomeScreenState extends State<HomeScreen> {
                margin: const EdgeInsets.only(bottom: 12),
                padding: const EdgeInsets.all(16),
                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.05),
+                  color: const Color(0xFF1A1F2E).withOpacity(0.7), // Glassmorphism base
                   borderRadius: const BorderRadius.only(
                     topLeft: Radius.circular(4),
                     topRight: Radius.circular(20),
                     bottomLeft: Radius.circular(20),
                     bottomRight: Radius.circular(20),
                   ),
-                  border: Border.all(color: Colors.white.withOpacity(0.05))
+                  border: Border.all(color: Colors.white.withOpacity(0.1))
                ),
                child: Text(
                  msg.text!, 
@@ -565,9 +849,12 @@ class _HomeScreenState extends State<HomeScreen> {
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
-        color: const Color(0xFF161822),
+        color: const Color(0xFF1A1F2E).withOpacity(0.7), // Glassmorphism base
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.white.withOpacity(0.05)),
+        border: Border.all(color: Colors.white.withOpacity(0.1)),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 10, offset: const Offset(0, 5))
+        ]
       ),
       child: Column(
         children: [
@@ -577,8 +864,8 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Row(
               children: [
                 CircleAvatar(
-                  backgroundColor: const Color(0xFF4D6FFF).withOpacity(0.2),
-                  child: const Icon(Icons.store, color: Color(0xFF4D6FFF), size: 18),
+                  backgroundColor: const Color(0xFF00D9FF).withOpacity(0.2),
+                  child: const Icon(Icons.store, color: Color(0xFF00D9FF), size: 18),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -605,6 +892,35 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           Container(height: 1, color: Colors.white.withOpacity(0.05)),
           
+          // Botón "Ver en el mapa"
+          InkWell(
+            onTap: () {
+              setState(() {
+                _selectedBodega = bodega;
+                _isMapExpanded = true;
+              });
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.map, color: Color(0xFF00D9FF), size: 18),
+                  const SizedBox(width: 8),
+                  const Text(
+                    "Ver en el mapa",
+                    style: TextStyle(
+                      color: Color(0xFF00D9FF),
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          Container(height: 1, color: Colors.white.withOpacity(0.05)),
+          
           // --- LISTA DE PRODUCTOS DETALLADA ---
           Padding(
             padding: const EdgeInsets.all(16),
@@ -617,24 +933,20 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // --- COLUMNA IZQUIERDA: ICONO O CANTIDAD ---
+                      // --- COLUMNA IZQUIERDA: CANTIDAD ---
                       Padding(
                         padding: const EdgeInsets.only(top: 2, right: 10),
-                        child: item.requestedQuantity > 1 
-                          // Si piden más de 1, mostramos un globito azul "x2"
-                          ? Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF4D6FFF),
-                                borderRadius: BorderRadius.circular(6)
-                              ),
-                              child: Text(
-                                "x${item.requestedQuantity}", 
-                                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)
-                              ),
-                            )
-                          // Si es 1, mostramos el check normal
-                          : Icon(Icons.check_circle_rounded, color: Colors.greenAccent.withOpacity(0.7), size: 16),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF00D9FF),
+                            borderRadius: BorderRadius.circular(6)
+                          ),
+                          child: Text(
+                            "x${item.requestedQuantity}", 
+                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)
+                          ),
+                        ),
                       ),
                       
                       // --- COLUMNA CENTRAL: NOMBRE ---
@@ -680,9 +992,9 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildModernInputArea() {
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1D2D).withOpacity(0.95),
+        color: const Color(0xFF1A1F2E).withOpacity(0.95),
         borderRadius: BorderRadius.circular(30),
-        border: Border.all(color: Colors.white.withOpacity(0.1)),
+        border: Border.all(color: Colors.white.withOpacity(0.12)),
         boxShadow: [
           BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 20, offset: const Offset(0, 10))
         ]
@@ -694,7 +1006,7 @@ class _HomeScreenState extends State<HomeScreen> {
               controller: _controller,
               enabled: !_isLoading,
               style: TextStyle(color: _isLoading ? Colors.white38 : Colors.white),
-              cursorColor: const Color(0xFF4D6FFF),
+              cursorColor: const Color(0xFF00D9FF),
               decoration: InputDecoration(
                 hintText: _isLoading ? "Buscando..." : "Escribe tu pedido...",
                 hintStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
@@ -709,7 +1021,7 @@ class _HomeScreenState extends State<HomeScreen> {
             duration: const Duration(milliseconds: 200),
             margin: const EdgeInsets.only(right: 6),
             decoration: BoxDecoration(
-              color: (_isTyping || _isLoading) ? const Color(0xFF4D6FFF) : Colors.transparent,
+              color: (_isTyping || _isLoading) ? const Color(0xFF00D9FF) : Colors.transparent,
               shape: BoxShape.circle,
             ),
             child: IconButton(
@@ -732,77 +1044,64 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-// --- FONDO ANIMADO ---
-class AmbientBackground extends StatefulWidget {
-  const AmbientBackground({super.key});
-  @override
-  State<AmbientBackground> createState() => _AmbientBackgroundState();
-}
-
-class _AmbientBackgroundState extends State<AmbientBackground> with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this, duration: const Duration(seconds: 15))..repeat();
-  }
-
-  @override
-  void dispose() { _controller.dispose(); super.dispose(); }
-
-  @override
-  Widget build(BuildContext context) {
-    return ImageFiltered(
-      imageFilter: ui.ImageFilter.blur(sigmaX: 60, sigmaY: 60), 
-      child: AnimatedBuilder(
-        animation: _controller,
-        builder: (context, child) {
-          final t = _controller.value * 2 * math.pi;
-          
-          return Stack(
-            children: [
-              Container(color: const Color(0xFF0F111A)),
-              Positioned(
-                top: 100 + math.sin(t) * 50,
-                left: -50 + math.cos(t * 0.5) * 50,
-                child: const Orb(color: Color(0xFF1E88E5), radius: 300),
-              ),
-              Positioned(
-                bottom: 100 + math.cos(t) * 60,
-                right: -50 + math.sin(t * 0.8) * 50,
-                child: const Orb(color: Color(0xFF7B1FA2), radius: 320),
-              ),
-              Positioned(
-                top: MediaQuery.of(context).size.height / 2 - 100,
-                left: MediaQuery.of(context).size.width / 2 - 100 + math.sin(t + 2) * 80,
-                child: Opacity(
-                  opacity: 0.4,
-                  child: const Orb(color: Color(0xFF009688), radius: 200),
-                ),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
-}
-
-class Orb extends StatelessWidget {
-  final Color color;
-  final double radius;
-  const Orb({super.key, required this.color, required this.radius});
+// --- FONDO MINIMALISTA ESTÁTICO ---
+class MinimalistBackground extends StatelessWidget {
+  const MinimalistBackground({super.key});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: radius,
-      height: radius,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: color.withOpacity(0.5),
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color(0xFF0A0E1A), // Negro azulado oscuro
+            Color(0xFF0F1419), // Negro con tinte gris
+            Color(0xFF0A0E1A), // Negro azulado oscuro
+          ],
+          stops: [0.0, 0.5, 1.0],
+        ),
+      ),
+      child: Stack(
+        children: [
+          // Acento sutil en la esquina superior
+          Positioned(
+            top: -100,
+            right: -100,
+            child: Container(
+              width: 300,
+              height: 300,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: RadialGradient(
+                  colors: [
+                    const Color(0xFF00D9FF).withOpacity(0.05),
+                    Colors.transparent,
+                  ],
+                ),
+              ),
+            ),
+          ),
+          // Acento sutil en la esquina inferior
+          Positioned(
+            bottom: -100,
+            left: -100,
+            child: Container(
+              width: 300,
+              height: 300,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: RadialGradient(
+                  colors: [
+                    const Color(0xFF00D9FF).withOpacity(0.03),
+                    Colors.transparent,
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
