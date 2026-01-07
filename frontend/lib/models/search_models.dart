@@ -4,13 +4,17 @@ class ProductItem {
   final double price;
   final double stock;
   final String unit;
+  final Map<String, dynamic> attributes;
+  final int requestedQuantity; // <--- NUEVO CAMPO
 
   ProductItem({
     required this.productId, 
     required this.name, 
     required this.price, 
     required this.stock, 
-    required this.unit
+    required this.unit,
+    required this.attributes,
+    this.requestedQuantity = 1, // Default 1
   });
 
   factory ProductItem.fromJson(Map<String, dynamic> json) {
@@ -19,7 +23,12 @@ class ProductItem {
       name: json['name'],
       price: (json['price'] as num).toDouble(),
       stock: (json['stock'] as num).toDouble(),
-      unit: json['unit'],
+      unit: json['unit'] ?? 'UND',
+      attributes: json['attributes'] != null 
+          ? Map<String, dynamic>.from(json['attributes']) 
+          : {},
+      // Leemos el valor o usamos 1 si no viene
+      requestedQuantity: json['requested_quantity'] ?? 1, 
     );
   }
 }

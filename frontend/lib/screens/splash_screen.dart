@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../services/session_service.dart'; // Importamos el archivo 1
 import 'home_screen.dart';
 import 'login_screen.dart';
+import 'bodeguero_screen.dart'; // Import necesario
 
 class SplashScreen extends StatefulWidget { // <--- ESTA ES LA CLASE QUE BUSCA MAIN
   const SplashScreen({super.key});
@@ -22,18 +23,27 @@ class _SplashScreenState extends State<SplashScreen> {
     // 1. Espera estética
     await Future.delayed(const Duration(seconds: 2));
 
-    // 2. Consulta al servicio (Archivo 1)
+    // 2. Consulta al servicio
     final session = SessionService();
     final userId = await session.getUserId();
+    final role = await session.getUserRole(); // Recuperamos el rol
 
     if (!mounted) return;
 
     // 3. Redirige
     if (userId != null && userId.isNotEmpty) {
-      Navigator.pushReplacement(
-        context, 
-        MaterialPageRoute(builder: (_) => const HomeScreen())
-      );
+      // Redirección basada en ROL
+      if (role == "BODEGUERO") {
+        Navigator.pushReplacement(
+          context, 
+          MaterialPageRoute(builder: (_) => const BodegueroScreen()) // FALTA IMPORTAR
+        );
+      } else {
+        Navigator.pushReplacement(
+          context, 
+          MaterialPageRoute(builder: (_) => const HomeScreen())
+        );
+      }
     } else {
       Navigator.pushReplacement(
         context, 
