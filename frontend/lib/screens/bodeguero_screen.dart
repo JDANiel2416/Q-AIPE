@@ -17,6 +17,17 @@ class _BodegueroScreenState extends State<BodegueroScreen> {
   List<dynamic> _products = [];
   bool _isLoading = true;
   String _userId = "";
+  
+  // Búsqueda
+  final TextEditingController _searchCtrl = TextEditingController();
+  String _searchQuery = "";
+
+  List<dynamic> get _filteredProducts {
+    if (_searchQuery.isEmpty) return _products;
+    return _products.where((p) => 
+      p['name'].toString().toLowerCase().contains(_searchQuery.toLowerCase())
+    ).toList();
+  }
 
   @override
   void initState() {
@@ -37,16 +48,18 @@ class _BodegueroScreenState extends State<BodegueroScreen> {
     }
   }
 
-  void _toggleProduct(int index, bool value) async {
+  void _toggleProduct(Map<String, dynamic> product, bool value) async {
+    // Optimistic Update
     setState(() {
-      _products[index]['in_stock'] = value;
+      product['in_stock'] = value;
     });
 
-    final success = await _api.toggleStock(_userId, _products[index]['product_id'], value);
+    final success = await _api.toggleStock(_userId, product['product_id'], value);
     
     if (!success) {
+      // Revertir
       setState(() {
-        _products[index]['in_stock'] = !value;
+        product['in_stock'] = !value;
       });
       if(mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -79,6 +92,27 @@ class _BodegueroScreenState extends State<BodegueroScreen> {
             child: Column(
               children: [
                 _buildCustomAppBar(),
+                if (!_isLoading)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: TextField(
+                      controller: _searchCtrl,
+                      onChanged: (val) => setState(() => _searchQuery = val),
+                      style: const TextStyle(color: Colors.white),
+                      decoration: InputDecoration(
+                        hintText: "Buscar producto...",
+                        hintStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
+                        prefixIcon: const Icon(Icons.search, color: Color(0xFF00D9FF)),
+                        filled: true,
+                        fillColor: const Color(0xFF1A1F2E).withOpacity(0.5),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(15),
+                          borderSide: BorderSide.none,
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 20),
+                      ),
+                    ),
+                  ),
                 Expanded(
                   child: _isLoading
                       ? const Center(child: CircularProgressIndicator(color: Color(0xFF00D9FF)))
@@ -191,11 +225,22 @@ class _BodegueroScreenState extends State<BodegueroScreen> {
   }
 
   Widget _buildProductList() {
+    final list = _filteredProducts; // Usar lista filtrada
+    
+    if (list.isEmpty && _searchQuery.isNotEmpty) {
+      return Center(
+        child: Text(
+          "No se encontraron productos",
+          style: TextStyle(color: Colors.white.withOpacity(0.5)),
+        ),
+      );
+    }
+
     return ListView.builder(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      itemCount: _products.length,
+      itemCount: list.length,
       itemBuilder: (ctx, i) {
-        final prod = _products[i];
+        final prod = list[i];
         final bool inStock = prod['in_stock'];
         
         return Container(
@@ -262,7 +307,7 @@ class _BodegueroScreenState extends State<BodegueroScreen> {
                 ),
                 Switch(
                   value: inStock,
-                  onChanged: (val) => _toggleProduct(i, val),
+                  onChanged: (val) => _toggleProduct(prod, val), // Pasar objeto directo
                   activeColor: const Color(0xFF00D9FF),
                   activeTrackColor: const Color(0xFF00D9FF).withOpacity(0.3),
                 ),

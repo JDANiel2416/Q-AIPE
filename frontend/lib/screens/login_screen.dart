@@ -199,11 +199,16 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   void _loginSuccess(Map<String, dynamic> res) async {
-    await SessionService().saveSession((res["user_id"] ?? "").toString());
+    // Guardar ID y ROL
+    await SessionService().saveSession(
+      (res["user_id"] ?? "").toString(),
+      role: res["role"], // Guardamos el rol que viene del backend
+    );
+    
     _botSay("¡Bienvenido! 🚀");
     await Future.delayed(const Duration(seconds: 1));
     if (mounted) {
-      if (res['role'] == "BODEGUERO" || _tempDni == "22222222") { // Fallback ID
+      if (res['role'] == "BODEGUERO" || _tempDni == "22222222") { 
          Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const BodegueroScreen()));
       } else {
          Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const HomeScreen()));

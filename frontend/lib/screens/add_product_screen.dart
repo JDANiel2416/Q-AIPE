@@ -23,14 +23,114 @@ class _AddProductScreenState extends State<AddProductScreen> {
 
   // Estado para campos dinámicos
   String _selectedCategory = 'Bebidas';
+  String? _selectedSubCategory; // Nuevo: Tipo de producto específico
+  String _selectedUnit = 'ml'; // Nuevo: Unidad de medida
   
   // Controladores para atributos específicos
   final TextEditingController _brandCtrl = TextEditingController();
-  final TextEditingController _capacityCtrl = TextEditingController();
-  final TextEditingController _weightCtrl = TextEditingController();
+  final TextEditingController _contentCtrl = TextEditingController(); // Unificado: Capacidad/Peso/Cantidad
   bool _hasGas = false;
 
   final List<String> _categories = ['Bebidas', 'Abarrotes', 'Limpieza', 'Otros'];
+  
+  // Mapas de configuración
+  final Map<String, List<String>> _subCategories = {
+    'Bebidas': ['Agua', 'Gaseosa', 'Cerveza', 'Jugo', 'Energizante', 'Rehidratante', 'Licor', 'Otros'],
+    'Limpieza': ['Detergente', 'Jabón', 'Suavizante', 'Lavavajillas', 'Lejía', 'Desinfectante', 'Ambientador', 'Otros'],
+    'Abarrotes': ['Arroz', 'Azúcar', 'Aceite', 'Fideos', 'Menestras', 'Conservas', 'Lácteos', 'Otros'],
+  };
+
+  final Map<String, List<String>> _unitsByCategory = {
+    'Bebidas': ['ml', 'L'],
+    'Limpieza': ['ml', 'L', 'kg', 'g', 'unidades'],
+    'Abarrotes': ['kg', 'g', 'L', 'ml', 'unidades'],
+    'Otros': ['unidades'],
+  };
+
+  // Marcas comunes Perú
+  String? _selectedBrandPredefined;
+  final Map<String, List<String>> _brandsBySubCategory = {
+    // Agua
+    'Agua': ['Cielo', 'San Luis', 'San Mateo', 'Loa', 'Vida', 'Socosani', 'Otras'],
+    // Gaseosa
+    'Gaseosa': ['Inca Kola', 'Coca-Cola', 'Sprite', 'Fanta', 'Pepsi', 'Seven Up', 'Kola Real', 'Big Cola', 'Otras'],
+    // Cerveza
+    'Cerveza': ['Pilsen Callao', 'Pilsen Trujillo', 'Cusqueña', 'Cristal', 'Arequipeña', 'Corona', 'Heineken', 'Otras'],
+    // Limpieza
+    'Detergente': ['Bolívar', 'Ariel', 'Opal', 'Ace', 'Marsella', 'Otras'],
+    'Jabón': ['Bolívar', 'Marsella', 'Protex', 'Lux', 'Camay', 'Otras'],
+    'Lejía': ['Clorox', 'Sapolio', 'Otras'],
+    // Abarrotes comunes
+    'Arroz': ['Costeño', 'Paisana', 'Faraón', 'Valle Norte', 'Otras'],
+    'Aceite': ['Primor', 'Cocinero', 'Cil', 'Sao', 'Otras'],
+    'Leche': ['Gloria', 'Laive', 'Ideal', 'Pura Vida', 'Otras'], // Si hubiera subcategoría Leche
+    'Fideos': ['Don Vittorio', 'Molitalia', 'Anita', 'Lavaggi', 'Otras'],
+  };
+
+  @override
+  void initState() {
+    super.initState();
+    _updateDefaults();
+  }
+
+  void _updateDefaults() {
+    // Resetear subcategoría y unidad por defecto al cambiar categoría
+    setState(() {
+      _selectedSubCategory = _subCategories[_selectedCategory]?.first;
+      _selectedUnit = _unitsByCategory[_selectedCategory]?.first ?? 'unidades';
+      
+      // Resetear marca
+      _selectedBrandPredefined = null;
+      _brandCtrl.clear();
+      
+      // Lógica por defecto para gas
+      if (_selectedCategory == 'Bebidas') {
+        _updateGasLogic();
+      }
+    });
+  }
+
+  void _updateGasLogic() {
+    if (_selectedCategory != 'Bebidas') return;
+    
+    // Lógica automática para gas
+    switch (_selectedSubCategory) {
+      case 'Gaseosa':
+      case 'Cerveza':
+      case 'Energizante': // La mayoría tienen gas
+        _hasGas = true;
+        break;
+      case 'Agua':
+        _hasGas = false; // El usuario lo puede cambiar manualmente
+        break;
+      default:
+        _hasGas = false;
+    }
+  }
+
+  // Getter para nombre computado
+  String get _computedName {
+    if (_selectedCategory == 'Otros') return _nameCtrl.text;
+    String sub = _selectedSubCategory ?? '';
+    
+    // Usar marca predefinida si existe y no es "Otras", sino usar el campo manual
+    String brand = _brandCtrl.text;
+    if (_selectedBrandPredefined != null && _selectedBrandPredefined != 'Otras') {
+      brand = _selectedBrandPredefined!;
+    }
+
+    String content = _contentCtrl.text;
+    String unit = _selectedUnit;
+    
+    // Si estamos en modo manual ("Otras" o sin lista), validamos que haya escrito algo
+    if ((_selectedBrandPredefined == null || _selectedBrandPredefined == 'Otras') && brand.isEmpty) {
+       return "Complete la marca...";
+    }
+    
+    if (content.isEmpty) return "$sub $brand";
+    
+    return "$sub $brand $content $unit";
+  }
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
@@ -40,28 +140,40 @@ class _AddProductScreenState extends State<AddProductScreen> {
     final userId = await SessionService().getUserId();
     if (userId == null) return;
 
-    Map<String, dynamic> dynamicAttributes = {};
+    Map<String, dynamic> dynamicAttributes = {
+      "marca": _brandCtrl.text,
+      if (_selectedSubCategory != null) "tipo": _selectedSubCategory,
+    };
     
+    // Construir atributos según categoría
     if (_selectedCategory == 'Bebidas') {
-      dynamicAttributes = {
-        "marca": _brandCtrl.text,
-        "capacidad": _capacityCtrl.text,
-        "gas": _hasGas
-      };
-    } else if (_selectedCategory == 'Abarrotes') {
-      dynamicAttributes = {
-        "marca": _brandCtrl.text,
-        "peso": _weightCtrl.text,
-      };
+      dynamicAttributes["capacidad"] = "${_contentCtrl.text} $_selectedUnit";
+      
+      // Solo guardar 'gas' si es relevante o si es Agua (donde es opcional)
+      if (_selectedSubCategory == 'Agua' || _selectedSubCategory == 'Gaseosa' || _selectedSubCategory == 'Energizante') {
+         dynamicAttributes["gas"] = _hasGas;
+      }
+      // Para otros (Jugo, Rehidratante, Licor) asumimos sin gas usualmente o no relevante, 
+      // pero si el usuario quiere guardarlo para todo, podemos dejarlo.
+      // Según requerimiento: "gaseosas siempre tienen gas... jugos nunca".
+      // Vamos a guardar la propiedad 'gas' explícitamente solo para Agua,
+      // para los demás, se puede inferir del tipo, pero lo guardaremos si es TRUE para consistencia.
+      if (_hasGas && _selectedSubCategory != 'Agua') {
+          dynamicAttributes["gas"] = true;
+      }
+      // Específicamente para Agua, guardamos el false también para distinguir "Con Gas" / "Sin Gas"
+      if (_selectedSubCategory == 'Agua') {
+         dynamicAttributes["gas"] = _hasGas;
+      }
+
+    } else if (_selectedCategory == 'Limpieza' || _selectedCategory == 'Abarrotes') {
+      dynamicAttributes["contenido_neto"] = "${_contentCtrl.text} $_selectedUnit";
     } else {
-      dynamicAttributes = {
-        "marca": _brandCtrl.text,
-        "detalle": "Generado manualmente"
-      };
+      dynamicAttributes["detalle"] = _contentCtrl.text.isNotEmpty ? "${_contentCtrl.text} $_selectedUnit" : "N/A";
     }
 
     final newProduct = ProductCreateRequest(
-      name: _nameCtrl.text,
+      name: _computedName, // <--- CAMBIO AQUÍ: Usamos el nombre autogenerado
       category: _selectedCategory,
       price: double.parse(_priceCtrl.text),
       stock: int.parse(_stockCtrl.text),
@@ -95,58 +207,205 @@ class _AddProductScreenState extends State<AddProductScreen> {
   }
 
   Widget _buildDynamicFields() {
-    switch (_selectedCategory) {
-      case 'Bebidas':
-        return Column(
-          children: [
-            _buildTextField(
-              controller: _brandCtrl,
-              label: 'Marca (Ej: San Luis)',
+    List<Widget> fields = [];
+    
+    // Dropdown de Subcategoría (Tipo) - MOVIDO AL INICIO
+    if (_subCategories.containsKey(_selectedCategory)) {
+        fields.add(
+          Container(
+            margin: const EdgeInsets.only(bottom: 12),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1A1F2E).withOpacity(0.5),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.white.withOpacity(0.1)),
             ),
-            const SizedBox(height: 12),
-            _buildTextField(
-              controller: _capacityCtrl,
-              label: 'Capacidad (Ej: 625ml)',
-            ),
-            const SizedBox(height: 12),
-            Container(
-              decoration: BoxDecoration(
-                color: const Color(0xFF1A1F2E).withOpacity(0.5),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.white.withOpacity(0.1)),
+            child: ButtonTheme(
+              alignedDropdown: true,
+              child: Theme(
+                data: Theme.of(context).copyWith(
+                  canvasColor: Colors.transparent,
+                ),
+                child: DropdownButtonFormField<String>(
+                  value: _selectedSubCategory,
+                  items: _subCategories[_selectedCategory]!.map((c) => DropdownMenuItem(
+                    value: c,
+                    child: Text(c, style: const TextStyle(color: Colors.white)),
+                  )).toList(),
+                  onChanged: (val) {
+                    setState(() {
+                      _selectedSubCategory = val!;
+                      // Resetear marca al cambiar subtipo para evitar crash
+                      _selectedBrandPredefined = null;
+                      _brandCtrl.clear();
+                      _updateGasLogic();
+                    });
+                  },
+                  dropdownColor: const Color(0xFF1A1F2E),
+                  decoration: InputDecoration(
+                    labelText: "Tipo de ${_selectedCategory.substring(0, _selectedCategory.length - 1)}",
+                    labelStyle: const TextStyle(color: Color(0xFFA0A8B8)),
+                    border: InputBorder.none,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                  ),
+                  style: const TextStyle(color: Colors.white),
+                  iconEnabledColor: const Color(0xFF00D9FF),
+                  menuMaxHeight: 300,
+                  borderRadius: BorderRadius.circular(12),
+                ),
               ),
-              child: CheckboxListTile(
-                title: const Text("¿Con Gas?", style: TextStyle(color: Colors.white)),
-                value: _hasGas,
-                onChanged: (v) => setState(() => _hasGas = v!),
-                activeColor: const Color(0xFF00D9FF),
-                checkColor: Colors.white,
-              ),
             ),
-          ],
-        );
-
-      case 'Abarrotes':
-        return Column(
-          children: [
-            _buildTextField(
-              controller: _brandCtrl,
-              label: 'Marca (Ej: Costeño)',
-            ),
-            const SizedBox(height: 12),
-            _buildTextField(
-              controller: _weightCtrl,
-              label: 'Peso Neto (Ej: 1kg)',
-            ),
-          ],
-        );
-
-      default:
-        return _buildTextField(
-          controller: _brandCtrl,
-          label: 'Marca o Fabricante',
+          )
         );
     }
+
+    // LOGICA MARCAS: Dropdown vs Texto Manual
+    bool hasPredefinedBrands = _selectedSubCategory != null && _brandsBySubCategory.containsKey(_selectedSubCategory);
+
+    if (hasPredefinedBrands) {
+       // Dropdown de Marcas
+       fields.add(
+         Container(
+            margin: const EdgeInsets.only(bottom: 12),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1A1F2E).withOpacity(0.5),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.white.withOpacity(0.1)),
+            ),
+            child: ButtonTheme(
+              alignedDropdown: true,
+              child: Theme(
+                data: Theme.of(context).copyWith(
+                  canvasColor: Colors.transparent,
+                ),
+                child: DropdownButtonFormField<String>(
+                  value: _selectedBrandPredefined,
+                  items: _brandsBySubCategory[_selectedSubCategory]!.map((b) => DropdownMenuItem(
+                    value: b,
+                    child: Text(b, style: const TextStyle(color: Colors.white)),
+                  )).toList(),
+                  onChanged: (val) {
+                    setState(() {
+                      _selectedBrandPredefined = val;
+                      if (val == 'Otras') {
+                         _brandCtrl.clear();
+                      } else {
+                         _brandCtrl.text = val!;
+                      }
+                    });
+                  },
+                  dropdownColor: const Color(0xFF1A1F2E),
+                  decoration: const InputDecoration(
+                    labelText: "Seleccionar Marca",
+                    labelStyle: TextStyle(color: Color(0xFFA0A8B8)),
+                    border: InputBorder.none,
+                    contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                  ),
+                  style: const TextStyle(color: Colors.white),
+                  iconEnabledColor: const Color(0xFF00D9FF),
+                  menuMaxHeight: 300,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+         )
+       );
+    }
+
+    // Campo de Texto Manual (Si no hay lista o seleccionó "Otras")
+    if (!hasPredefinedBrands || _selectedBrandPredefined == 'Otras') {
+      fields.add(
+        _buildTextField(
+          controller: _brandCtrl,
+          label: hasPredefinedBrands ? 'Especifique la marca' : 'Marca / Fabricante',
+          validator: (v) => v!.isEmpty ? "Requerido" : null,
+        ),
+      );
+      fields.add(const SizedBox(height: 12));
+    } else {
+      // Espacio si solo mostramos dropdown
+      fields.add(const SizedBox(height: 12));
+    }
+
+
+    
+    // Campo de Cantidad + Unidad
+    if (_selectedCategory != 'Otros') {
+      fields.add(
+        Row(
+          children: [
+            Expanded(
+              flex: 2,
+              child: _buildTextField(
+                controller: _contentCtrl,
+                label: 'Contenido', // "Capacidad" o "Peso" o "Cantidad"
+                keyboardType: TextInputType.number,
+                validator: (v) => v!.isEmpty ? "Requerido" : null,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              flex: 1,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1A1F2E).withOpacity(0.5),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.white.withOpacity(0.1)),
+                ),
+                child: ButtonTheme(
+                  alignedDropdown: true,
+                  child: Theme(
+                    data: Theme.of(context).copyWith(
+                      canvasColor: Colors.transparent,
+                    ),
+                    child: DropdownButtonFormField<String>(
+                      value: _selectedUnit,
+                      items: (_unitsByCategory[_selectedCategory] ?? ['unidades']).map((u) => DropdownMenuItem(
+                        value: u,
+                        child: Text(u, style: const TextStyle(color: Colors.white)),
+                      )).toList(),
+                      onChanged: (val) => setState(() => _selectedUnit = val!),
+                      dropdownColor: const Color(0xFF1A1F2E),
+                      decoration: const InputDecoration(
+                        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+                        border: InputBorder.none,
+                      ),
+                      style: const TextStyle(color: Colors.white),
+                      iconEnabledColor: const Color(0xFF00D9FF),
+                      menuMaxHeight: 300,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        )
+      );
+    }
+
+    // Checkbox de GAS (Solo visible para Agua, o informativo para otros)
+    // El usuario dijo: "¿cómo aplica eso a las gaseosas que siempre tienen gas? ... solo aplica para agua"
+    if (_selectedCategory == 'Bebidas' && _selectedSubCategory == 'Agua') {
+      fields.add(const SizedBox(height: 12));
+      fields.add(
+        Container(
+          decoration: BoxDecoration(
+            color: const Color(0xFF1A1F2E).withOpacity(0.5),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.white.withOpacity(0.1)),
+          ),
+          child: CheckboxListTile(
+            title: const Text("¿Con Gas?", style: TextStyle(color: Colors.white)),
+            value: _hasGas,
+            onChanged: (v) => setState(() => _hasGas = v!),
+            activeColor: const Color(0xFF00D9FF),
+            checkColor: Colors.white,
+          ),
+        )
+      );
+    }
+
+    return Column(children: fields);
   }
 
   Widget _buildTextField({
@@ -214,35 +473,80 @@ class _AddProductScreenState extends State<AddProductScreen> {
                               borderRadius: BorderRadius.circular(12),
                               border: Border.all(color: Colors.white.withOpacity(0.1)),
                             ),
-                            child: DropdownButtonFormField<String>(
-                              value: _selectedCategory,
-                              items: _categories.map((c) => DropdownMenuItem(
-                                value: c,
-                                child: Text(c, style: const TextStyle(color: Colors.white)),
-                              )).toList(),
-                              onChanged: (val) {
-                                setState(() {
-                                  _selectedCategory = val!;
-                                });
-                              },
-                              dropdownColor: const Color(0xFF1A1F2E),
-                              decoration: const InputDecoration(
-                                labelText: "Categoría",
-                                labelStyle: TextStyle(color: Color(0xFFA0A8B8)),
-                                border: InputBorder.none,
-                                contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                            child: ButtonTheme(
+                              alignedDropdown: true,
+                              child: Theme(
+                                data: Theme.of(context).copyWith(
+                                  canvasColor: Colors.transparent,
+                                ),
+                                child: DropdownButtonFormField<String>(
+                                  value: _selectedCategory,
+                                  items: _categories.map((c) => DropdownMenuItem(
+                                    value: c,
+                                    child: Text(c, style: const TextStyle(color: Colors.white)),
+                                  )).toList(),
+                                  onChanged: (val) {
+                                    setState(() {
+                                      _selectedCategory = val!;
+                                      _updateDefaults();
+                                    });
+                                  },
+                                  dropdownColor: const Color(0xFF1A1F2E),
+                                  decoration: const InputDecoration(
+                                    labelText: "Categoría",
+                                    labelStyle: TextStyle(color: Color(0xFFA0A8B8)),
+                                    border: InputBorder.none,
+                                    contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                                  ),
+                                  style: const TextStyle(color: Colors.white),
+                                  iconEnabledColor: const Color(0xFF00D9FF),
+                                  menuMaxHeight: 300,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
                               ),
-                              style: const TextStyle(color: Colors.white),
-                              iconEnabledColor: const Color(0xFF00D9FF),
                             ),
                           ),
                           const SizedBox(height: 12),
                           
-                          _buildTextField(
-                            controller: _nameCtrl,
-                            label: "Nombre del Producto",
-                            validator: (v) => v!.isEmpty ? "Campo obligatorio" : null,
-                          ),
+                          const SizedBox(height: 12),
+                          
+                          // Lógica de Nombre Automático vs Manual
+                          if (_selectedCategory == 'Otros') ...[
+                            _buildTextField(
+                              controller: _nameCtrl,
+                              label: "Nombre del Producto",
+                              validator: (v) => v!.isEmpty ? "Campo obligatorio" : null,
+                            ),
+                          ] else ...[
+                            // Vista previa del nombre generado
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.05),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: Colors.white.withOpacity(0.1)),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    "Nombre Generado",
+                                    style: TextStyle(color: Color(0xFFA0A8B8), fontSize: 12),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    _computedName,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                           const SizedBox(height: 12),
                           
                           Row(
