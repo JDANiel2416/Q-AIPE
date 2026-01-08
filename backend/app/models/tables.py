@@ -69,6 +69,36 @@ class BodegaSchedule(Base):
     bodega = relationship("Bodega", back_populates="schedules")
 
 
+# 4. MEMORIA DE CHAT (HISTORIAL)
+class ChatSession(Base):
+    __tablename__ = "chat_sessions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    # Puede ser NULL si es un usuario "invitado" o temporal, pero idealmente linkeado
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    created_at = Column(TIMESTAMP, server_default=text("now()"))
+    updated_at = Column(TIMESTAMP, server_default=text("now()"), onupdate=text("now()"))
+
+    # Relaciones
+    messages = relationship("ChatMessage", back_populates="session", cascade="all, delete-orphan")
+    user = relationship("User")
+
+
+class ChatMessage(Base):
+    __tablename__ = "chat_messages"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    session_id = Column(UUID(as_uuid=True), ForeignKey("chat_sessions.id"), nullable=False)
+    
+    role = Column(String, nullable=False) # 'user' o 'assistant'
+    content = Column(String, nullable=False) # El texto del mensaje
+    
+    created_at = Column(TIMESTAMP, server_default=text("now()"))
+
+    # Relaciones
+    session = relationship("ChatSession", back_populates="messages")
+
+
 # 4. PRODUCTOS MAESTROS (Catálogo Global)
 class MasterProduct(Base):
     __tablename__ = "master_products"

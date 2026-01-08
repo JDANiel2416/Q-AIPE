@@ -180,11 +180,11 @@ class _AddProductScreenState extends State<AddProductScreen> {
       attributes: dynamicAttributes,
     );
 
-    final success = await _api.addProduct(userId, newProduct);
-
+    final result = await _api.addProduct(userId, newProduct);
+    
     setState(() => _isLoading = false);
 
-    if (success) {
+    if (result['success']) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -196,9 +196,119 @@ class _AddProductScreenState extends State<AddProductScreen> {
       }
     } else {
       if (mounted) {
+        if (result['status'] == 409) {
+          // ALERTA DE DUPLICADO
+          showDialog(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              backgroundColor: const Color(0xFF1A1F2E),
+              title: const Text("Producto Existente", style: TextStyle(color: Colors.white)),
+              content: Text(
+                result['message'] ?? "Este producto ya está en tu lista.",
+                style: const TextStyle(color: Colors.white70),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text("Cancelar", style: TextStyle(color: Colors.white70)),
+                ),
+                TextButton(
+                  onPressed: () {
+                    Navigator.pop(ctx); // Cerrar primer diálogo
+                    _showUpdateConfirmation(); // Mostrar confirmación
+                  },
+                  child: const Text("Modificar Producto", style: TextStyle(color: Color(0xFF00D9FF), fontWeight: FontWeight.bold)),
+                ),
+              ],
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+             SnackBar(
+              content: Text('Error: ${result['message']}'),
+              backgroundColor: Colors.redAccent,
+            ),
+          );
+        }
+      }
+    }
+  }
+
+  void _showUpdateConfirmation() async {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1F2E),
+        title: const Text("Confirmar Actualización", style: TextStyle(color: Colors.white)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              "¿Deseas actualizar el producto existente con estos nuevos datos?",
+              style: TextStyle(color: Colors.white70),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              "Precio: S/ ${_priceCtrl.text}",
+              style: const TextStyle(color: Color(0xFF00D9FF), fontWeight: FontWeight.bold),
+            ),
+            Text(
+              "Stock: ${_stockCtrl.text}",
+              style: const TextStyle(color: Color(0xFF00D9FF), fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("Cancelar", style: TextStyle(color: Colors.white70)),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(ctx); // Cerrar diálogo de confirmación
+              await _performUpdate();
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF00D9FF),
+              foregroundColor: Colors.white,
+            ),
+            child: const Text("Confirmar", style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _performUpdate() async {
+    setState(() => _isLoading = true);
+
+    final userId = await SessionService().getUserId();
+    if (userId == null) return;
+
+    final result = await _api.updateProduct(
+      userId,
+      _computedName, // Usamos el nombre generado
+      _selectedCategory,
+      double.parse(_priceCtrl.text),
+      int.parse(_stockCtrl.text),
+    );
+
+    setState(() => _isLoading = false);
+
+    if (mounted) {
+      if (result['success']) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Error al guardar producto'),
+            content: Text('Producto actualizado correctamente ✅'),
+            backgroundColor: Color(0xFF00D9FF),
+          ),
+        );
+        Navigator.pop(context, true); // Volver a la pantalla anterior
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: ${result['message']}'),
             backgroundColor: Colors.redAccent,
           ),
         );

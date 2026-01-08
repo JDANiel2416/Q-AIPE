@@ -66,28 +66,61 @@ class GeminiService:
         history_str = "\n".join([f"{msg['role']}: {msg['content']}" for msg in history[-6:]])
 
         prompt = f"""
-        Eres el cerebro de búsqueda de "Q-AIPE".
+        Eres el cerebro de búsqueda de "Q-AIPE", una app de delivery de bodegas.
         HISTORIAL: {history_str}
         INPUT USUARIO: "{user_query}"
         
         TAREA:
-        Analiza qué productos quiere, qué CANTIDAD y sus CARACTERÍSTICAS.
-        IMPORTANTE: Si pide el mismo producto con variantes distintas (ej: uno con gas, otro sin gas), GENERA DOS OBJETOS SEPARADOS.
+        Analiza qué productos quiere el usuario, en QUÉ CANTIDAD y sus CARACTERÍSTICAS.
+        
+        REGLAS CRÍTICAS:
+        1. **Nombre del producto es LO MÁS IMPORTANTE** - Siempre prioriza identificar el producto base.
+        2. **CONTEXTO HISTÓRICO - MODIFICACIÓN VS ADICIÓN**:
+           - Si dice "cambia por...", "mejor dame...", "no, quiero...": REEMPLAZA el producto anterior.
+           - Si dice "AGREGA", "TAMBIÉN", "Y UNO DE...", "ADICIONA", "SEPARA": **ESTRICTAMENTE MANTÉN** los productos del historial y **AGREGA** el nuevo al array.
+             ¡TU SALIDA DEBE CONTENER UNA LISTA CON EL PRODUCTO ANTERIOR Y EL NUEVO!
+             Ejemplo: Historial=[Coca], User="agrega arroz" -> Output=[Coca, Arroz]. NO devuelvas solo [Arroz].
+           - Si dice "OTRA", "ESA", "SIMILAR": Resuelve la referencia (mismo producto, dif atributos).
+        3. **Características de TAMAÑO son PREFERENCIAS**:
+           - Ponlas en "preferred_attributes".
+           - Solo usa "must_contain" para variantes estrictas (Zero, Sin Gas).
+        4. **Variantes del MISMO producto** → genera objetos SEPARADOS.
         
         EJEMPLOS:
-        1. "Un agua con gas y dos sin gas" ->
-           [
-             {{"product_name": "Agua", "quantity": 1, "must_contain": ["con gas"]}},
-             {{"product_name": "Agua", "quantity": 2, "must_contain": ["sin gas"], "must_not_contain": ["con gas"]}}
-           ]
-        2. "Dos Coca Zero y una Inka" -> 
-           [
-             {{"product_name": "Coca Cola", "quantity": 2, "must_contain": ["zero", "sin azúcar"]}},
-             {{"product_name": "Inca Kola", "quantity": 1, "must_contain": []}}
-           ]
         
-        OUTPUT (JSON Array):
-        [{{"product_name": "Nombre", "quantity": 1, "must_contain": [], "must_not_contain": []}}]
+        Historial: [User: "Quiero Inca Kola 3L", Bot: "No tengo 3L"]
+        Input: "¿no tienes otra?"
+        Output: [
+          {{
+            "product_name": "Inca Kola",
+            "quantity": 1,
+            "must_contain": [], 
+            "must_not_contain": ["3L", "3 litros"], 
+            "preferred_attributes": []
+          }}
+        ]
+        
+        Input: "quiero una gaseosa de 2 litros una inka kola"
+        Output: [
+          {{
+            "product_name": "Inca Kola",
+            "quantity": 1,
+            "must_contain": ["gaseosa"],
+            "must_not_contain": [],
+            "preferred_attributes": ["2 litros", "2L", "2000ml"]
+          }}
+        ]
+        
+        ESTRUCTURA JSON:
+        [{{
+          "product_name": "Nombre",
+          "quantity": 1,
+          "must_contain": [],
+          "must_not_contain": [],
+          "preferred_attributes": []
+        }}]
+        
+        DEVUELVE SOLO EL JSON ARRAY.
         """
 
         def _call_gemini():
@@ -106,10 +139,31 @@ class GeminiService:
 
     async def generate_shopkeeper_response(self, user_query: str, context_str: str) -> str:
         prompt = f"""
-        Actúa como "Q-AIPE", asistente de bodegas en Huanchaco.
+        Actúa como "Q-AIPE", asistente de bodegas en Huanchaco, Perú.
+        
         Input Cliente: "{user_query}"
         Resultado BD: "{context_str}"
-        Reglas: Sé breve, amable, usa jerga peruana leve ("Vecino").
+        
+        Reglas de Respuesta:
+        1. **Sé breve y natural** - Máximo 2-3 líneas
+        2. **Usa jerga peruana casual** - "vecino", "causa", "pata" (moderadamente)
+        3. **Sé específico** - Menciona cantidades y precios si están disponibles
+        4. **Si hay resultados** - Confirma que encontraste y da detalles breves
+        5. **Si NO hay resultados** - Sugiere alternativas o pregunta si quiere algo similar
+        6. **Evita redundancia** - No repitas exactamente lo que dice el context_str
+        
+        Ejemplos:
+        - Input: "quiero una inca kola de 2 litros"
+          Context: "Se encontró: Gaseosa Inca Kola 2L a S/7.50"
+          Respuesta: "¡Listo vecino! 🍹 Tengo Inca Kola de 2L a S/7.50 en la bodega más cercana."
+        
+        - Input: "cerveza pilsen grande"
+          Context: "Se encontró: Cerveza Pilsen 630ml a S/8.50"
+          Respuesta: "Claro, tengo Pilsen de 630ml a S/8.50, vecino 🍺"
+        
+        - Input: "coca cola de 3 litros"
+          Context: "No se encontraron coincidencias. Productos similares: Coca Cola 2L, Coca Cola 1.5L"
+          Respuesta: "No tengo de 3L causa, pero sí hay de 2L y 1.5L. ¿Te sirve alguna? 🥤"
         """
         
         def _call_gemini():

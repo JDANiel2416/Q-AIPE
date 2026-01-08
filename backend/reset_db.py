@@ -15,6 +15,8 @@ def reset_database():
     # Esto elimina las tablas "fantasma" que Python no conoce pero PostgreSQL sí.
     with engine.connect() as connection:
         print("   - Eliminando tablas conflictivas...")
+        connection.execute(text("DROP TABLE IF EXISTS chat_messages CASCADE;"))
+        connection.execute(text("DROP TABLE IF EXISTS chat_sessions CASCADE;"))
         connection.execute(text("DROP TABLE IF EXISTS reservation_items CASCADE;"))
         connection.execute(text("DROP TABLE IF EXISTS reservations CASCADE;"))
         connection.execute(text("DROP TABLE IF EXISTS store_inventory CASCADE;"))
@@ -53,14 +55,16 @@ def reset_database():
             owner_id=don_lucho.id,
             name="Bodega Don Lucho",
             address="Av. La Rivera 123",
-            latitude=-8.0783, longitude=-79.1180,
+            latitude=-8.083267411952374, 
+            longitude=-79.08689281105985,
             manual_override="OPEN", rating=4.8
         )
         bodega_pepe = Bodega(
             owner_id=tio_pepe.id,
             name="Bodega El Tío Pepe",
             address="Calle Los Olivos 456",
-            latitude=-8.0765, longitude=-79.1195,
+            latitude=-8.082630380806767, 
+            longitude=-79.08790687508669,
             manual_override="OPEN", rating=4.5
         )
         db.add_all([bodega_lucho, bodega_pepe])
@@ -70,14 +74,22 @@ def reset_database():
         p1 = MasterProduct(name="Arroz Costeño Graneadito", category="Abarrotes", synonyms=["arroz", "kilo de arroz"], default_unit="kg")
         p2 = MasterProduct(name="Cerveza Pilsen Callao 630ml", category="Licores", synonyms=["chela", "birra", "pilsen"], default_unit="botella")
         p3 = MasterProduct(name="Coca Cola 1.5L", category="Bebidas", synonyms=["gaseosa", "coca"], default_unit="botella")
-        
-        db.add_all([p1, p2, p3])
+        p4 = MasterProduct(name="Inca Kola 3L", category="Bebidas", synonyms=["gaseosa", "inka"], default_unit="botella")
+        p5 = MasterProduct(name="Inca Kola 2L", category="Bebidas", synonyms=["gaseosa", "inka"], default_unit="botella")
+        p6 = MasterProduct(name="Inca Kola 1.5L", category="Bebidas", synonyms=["gaseosa", "inka"], default_unit="botella")
+        p7 = MasterProduct(name="Inca Kola 500ml", category="Bebidas", synonyms=["gaseosa", "inka", "personal"], default_unit="botella")
+
+        db.add_all([p1, p2, p3, p4, p5, p6, p7])
         db.commit()
 
         # --- INVENTARIO ---
         inv = [
             StoreInventory(bodega_id=bodega_lucho.id, product_id=p1.id, price=4.50, stock_quantity=20),
             StoreInventory(bodega_id=bodega_lucho.id, product_id=p3.id, price=7.50, stock_quantity=15),
+            StoreInventory(bodega_id=bodega_lucho.id, product_id=p5.id, price=9.00, stock_quantity=10, is_available=True), # Inca 2L (SÍ HAY)
+            StoreInventory(bodega_id=bodega_lucho.id, product_id=p6.id, price=6.00, stock_quantity=24, is_available=True), # Inca 1.5L (SÍ HAY)
+            # Inca 3L (p4) NO AGREGAMOS para simular que no hay
+            
             StoreInventory(bodega_id=bodega_pepe.id, product_id=p2.id, price=8.00, stock_quantity=50), 
             StoreInventory(bodega_id=bodega_pepe.id, product_id=p1.id, price=4.40, stock_quantity=10)
         ]

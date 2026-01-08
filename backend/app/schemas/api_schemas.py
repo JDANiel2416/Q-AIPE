@@ -9,6 +9,7 @@ class SearchRequest(BaseModel):
     query: str              # Ej: "Una gorda y arroz"
     user_lat: float         # Ej: -8.0783
     user_lon: float         # Ej: -79.1180
+    user_id: Optional[UUID] = None # NUEVO: Para identificar al usuario y su historial
     conversation_history: List[Dict[str, str]] = []
 
 class BodegaStatusUpdate(BaseModel):

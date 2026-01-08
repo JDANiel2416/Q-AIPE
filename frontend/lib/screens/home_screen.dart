@@ -59,9 +59,13 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isMapExpanded = false;
   BodegaSearchResult? _selectedBodega; // Para centrar el mapa en una bodega específica
 
+  // --- NUEVO: ID del usuario para persistencia ---
+  String? _currentUserId;
+
   @override
   void initState() {
     super.initState();
+    _loadUserSession(); // <--- Cargar ID
     _controller.addListener(() {
       final isTyping = _controller.text.trim().isNotEmpty;
       if (_isTyping != isTyping) {
@@ -76,6 +80,16 @@ class _HomeScreenState extends State<HomeScreen> {
     
     // 3. CAMBIO: Llamamos a la función de obtener ubicación al iniciar
     _getUserLocation();
+  }
+
+  Future<void> _loadUserSession() async {
+    final userId = await SessionService().getUserId();
+    if (mounted) {
+      setState(() {
+        _currentUserId = userId;
+      });
+      print("👤 User ID cargado: $_currentUserId");
+    }
   }
 
   void _onScroll() {
@@ -273,8 +287,13 @@ class _HomeScreenState extends State<HomeScreen> {
     _scrollToBottom();
 
     try {
-      // 4. CAMBIO: Ahora se envían las coordenadas reales (_userLocation)
-      final response = await _apiService.searchSmart(text, _userLocation.latitude, _userLocation.longitude);
+      // 4. CAMBIO: Ahora se envían las coordenadas reales (_userLocation) y el ID del usuario
+      final response = await _apiService.searchSmart(
+        text, 
+        _userLocation.latitude, 
+        _userLocation.longitude,
+        _currentUserId // <--- NUEVO: Pasamos el ID para historial
+      );
       
       _updateMapMarkers(response.results);
       _moveCameraToFit(response.results);

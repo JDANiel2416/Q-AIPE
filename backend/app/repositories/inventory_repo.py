@@ -6,10 +6,10 @@ from math import radians, cos, sin, asin, sqrt
 class InventoryRepository:
 
     @staticmethod
-    def search_products_smart(db: Session, keywords: list[str], user_lat: float, user_lon: float, max_dist_km: float = 1.5): # <--- CAMBIO AQUÍ: 1.5
+    def search_products_smart(db: Session, keywords: list[str], user_lat: float, user_lon: float, max_dist_km: float = 3.0): # <--- CAMBIO: Radio aumentado a 3.0 km
         """
         Busca productos por coincidencia en nombre, categoría, sinónimos O ATRIBUTOS.
-        Filtra estrictamente en un radio de 1.5 km por defecto.
+        Filtra en un radio de 3.0 km por defecto.
         """
         if not keywords:
             return []
@@ -47,10 +47,10 @@ class InventoryRepository:
         final_results = []
         for inv, prod, bodega in raw_results:
             dist = InventoryRepository.haversine(user_lat, user_lon, bodega.latitude, bodega.longitude)
-            # Filtro estricto de distancia
+            # Filtro de distancia
             if dist <= max_dist_km:
                 final_results.append((inv, prod, bodega))
-
+        
         return final_results
 
     @staticmethod

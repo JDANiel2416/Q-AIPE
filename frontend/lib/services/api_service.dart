@@ -7,15 +7,17 @@ import '../models/inventory_models.dart';
 
 class ApiService {
   static String get baseUrl {
-    if (kIsWeb) return "http://127.0.0.1:8000/api/v1";
+    //if (kIsWeb) return "http://127.0.0.1:8000/api/v1";
     
     // OJO: Cambia los X por tu IP real, ejemplo: 192.168.1.15
-    if (Platform.isAndroid) return "http://192.168.1.48:8000/api/v1"; 
+    //if (Platform.isAndroid) return "http://192.168.0.103:8000/api/v1"; 
     
-    return "http://127.0.0.1:8000/api/v1";
+    //return "http://127.0.0.1:8000/api/v1";
+    const String publicUrl = "https://36d176703f78.ngrok-free.app";
+    return "$publicUrl/api/v1";
   }
 
-  Future<bool> addProduct(String userId, ProductCreateRequest product) async {
+  Future<Map<String, dynamic>> addProduct(String userId, ProductCreateRequest product) async {
     final url = Uri.parse('$baseUrl/bodeguero/add-product?user_id=$userId');
     
     try {
@@ -25,15 +27,52 @@ class ApiService {
         body: jsonEncode(product.toJson()),
       );
 
+      final data = jsonDecode(utf8.decode(response.bodyBytes));
+
       if (response.statusCode == 200) {
-        return true;
+        return {"success": true, "message": "Producto agregado correctamente"};
+      } else if (response.statusCode == 409) {
+        return {"success": false, "status": 409, "message": data['detail']};
       } else {
-        print("Error al crear producto: ${response.body}");
-        return false;
+        return {"success": false, "message": data['detail'] ?? "Error desconocido"};
       }
     } catch (e) {
       print("Error de conexión: $e");
-      return false;
+      return {"success": false, "message": "Error de conexión: $e"};
+    }
+  }
+
+  Future<Map<String, dynamic>> updateProduct(
+    String userId, 
+    String productName, 
+    String category,
+    double price, 
+    int stock
+  ) async {
+    final url = Uri.parse('$baseUrl/bodeguero/update-product?user_id=$userId');
+    
+    try {
+      final response = await http.put(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "product_name": productName,
+          "category": category,
+          "price": price,
+          "stock": stock,
+        }),
+      );
+
+      final data = jsonDecode(utf8.decode(response.bodyBytes));
+
+      if (response.statusCode == 200) {
+        return {"success": true, "message": data['message'] ?? "Producto actualizado"};
+      } else {
+        return {"success": false, "message": data['detail'] ?? "Error al actualizar"};
+      }
+    } catch (e) {
+      print("Error de conexión: $e");
+      return {"success": false, "message": "Error de conexión: $e"};
     }
   }
 
@@ -42,14 +81,15 @@ class ApiService {
       String query, 
       double userLat, 
       double userLon, 
-      [List<Map<String, String>> history = const []]
+      [String? userId, List<Map<String, String>> history = const []]
   ) async {
     final url = Uri.parse('$baseUrl/search/smart');
     
     final body = {
       "query": query,
-      "user_lat": userLat, // Usamos las coordenadas reales del mapa
+      "user_lat": userLat,
       "user_lon": userLon,
+      if (userId != null) "user_id": userId,
       "conversation_history": history 
     };
 
