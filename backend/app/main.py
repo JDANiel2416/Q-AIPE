@@ -13,6 +13,16 @@ app = FastAPI(
     openapi_url=f"{settings.API_V1_STR}/openapi.json"
 )
 
+# Servir archivos estáticos (imágenes)
+from fastapi.staticfiles import StaticFiles
+import os
+
+static_dir = "static"
+if not os.path.exists(static_dir):
+    os.makedirs(static_dir)
+
+app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
 # --- CONFIGURACIÓN DE CORS (SOLUCIÓN AL ERROR) ---
 # Esto permite que el Frontend (Flutter Web/Mobile/Desktop) envíe peticiones al Backend
 origins = [

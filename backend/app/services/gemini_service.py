@@ -62,65 +62,45 @@ class GeminiService:
         print("❌ [GEMINI] Se agotaron las cuotas de TODOS los modelos disponibles.")
         raise Exception("Servicio Gemini no disponible temporalmente (Cuota agotada).")
 
-    async def interpret_search_intent(self, user_query: str, history: list) -> list:
-        history_str = "\n".join([f"{msg['role']}: {msg['content']}" for msg in history[-6:]])
+    async def interpret_search_intent(self, user_query: str, current_state: list) -> list:
+        state_str = json.dumps(current_state, ensure_ascii=False, indent=2)
 
         prompt = f"""
         Eres el cerebro de búsqueda de "Q-AIPE", una app de delivery de bodegas.
-        HISTORIAL: {history_str}
-        INPUT USUARIO: "{user_query}"
+        
+        ESTADO ACTUAL DEL PEDIDO (JSON):
+        {state_str}
+        
+        NUEVO INPUT USUARIO: "{user_query}"
         
         TAREA:
-        Analiza qué productos quiere el usuario, en QUÉ CANTIDAD y sus CARACTERÍSTICAS.
+        Basado en el ESTADO ACTUAL y el NUEVO INPUT, genera el ESTADO RESULTANTE.
         
-        REGLAS CRÍTICAS:
-        1. **Nombre del producto es LO MÁS IMPORTANTE** - Siempre prioriza identificar el producto base.
-        2. **CONTEXTO HISTÓRICO - MODIFICACIÓN VS ADICIÓN**:
-           - Si dice "cambia por...", "mejor dame...", "no, quiero...": REEMPLAZA el producto anterior.
-           - Si dice "AGREGA", "TAMBIÉN", "Y UNO DE...", "ADICIONA", "SEPARA": **ESTRICTAMENTE MANTÉN** los productos del historial y **AGREGA** el nuevo al array.
-             ¡TU SALIDA DEBE CONTENER UNA LISTA CON EL PRODUCTO ANTERIOR Y EL NUEVO!
-             Ejemplo: Historial=[Coca], User="agrega arroz" -> Output=[Coca, Arroz]. NO devuelvas solo [Arroz].
-           - Si dice "OTRA", "ESA", "SIMILAR": Resuelve la referencia (mismo producto, dif atributos).
-        3. **Características de TAMAÑO son PREFERENCIAS**:
-           - Ponlas en "preferred_attributes".
-           - Solo usa "must_contain" para variantes estrictas (Zero, Sin Gas).
-        4. **Variantes del MISMO producto** → genera objetos SEPARADOS.
+        REGLAS DE ACTUALIZACIÓN:
+        1. **MODIFICACIÓN**: Si el usuario pide cambiar algo ("mejor dame", "no, quiero X"), actualiza el objeto correspondiente en el JSON.
+        2. **ADICIÓN**: Si el usuario pide algo nuevo ("agrega", "también", "y"), añade un nuevo objeto al array.
+        3. **ELIMINACIÓN**: Si el usuario pide quitar algo ("quita el arroz", "ya no quiero X"), remuévelo del array.
+        4. **CLARIFICACIÓN**: Si el usuario responde a una pregunta sobre un producto del estado (ej: "¿que tamaño?" -> "grande"), actualiza los atributos de ese producto.
+        5. **MEMORIA**: Mantén los productos anteriores a menos que el usuario indique explícitamente cambiarlos o eliminarlos.
         
-        EJEMPLOS:
+        REGLAS DE EXTRACCIÓN:
+        - product_name: Nombre base (Ej: "Inca Kola", "Arroz").
+        - quantity: Entero.
+        - must_contain: Lista de variantes obligatorias (ej: ["Zero", "Sin Gas"]).
+        - preferred_attributes: Lista de preferencias (ej: ["2L", "Gloria"]).
         
-        Historial: [User: "Quiero Inca Kola 3L", Bot: "No tengo 3L"]
-        Input: "¿no tienes otra?"
-        Output: [
+        ESTRUCTURA DE SALIDA (SIEMPRE UN ARRAY JSON):
+        [
           {{
-            "product_name": "Inca Kola",
+            "product_name": "Nombre",
             "quantity": 1,
-            "must_contain": [], 
-            "must_not_contain": ["3L", "3 litros"], 
+            "must_contain": [],
+            "must_not_contain": [],
             "preferred_attributes": []
           }}
         ]
         
-        Input: "quiero una gaseosa de 2 litros una inka kola"
-        Output: [
-          {{
-            "product_name": "Inca Kola",
-            "quantity": 1,
-            "must_contain": ["gaseosa"],
-            "must_not_contain": [],
-            "preferred_attributes": ["2 litros", "2L", "2000ml"]
-          }}
-        ]
-        
-        ESTRUCTURA JSON:
-        [{{
-          "product_name": "Nombre",
-          "quantity": 1,
-          "must_contain": [],
-          "must_not_contain": [],
-          "preferred_attributes": []
-        }}]
-        
-        DEVUELVE SOLO EL JSON ARRAY.
+        DEVUELVE SOLO EL JSON ARRAY ACTUALIZADO.
         """
 
         def _call_gemini():
@@ -135,7 +115,7 @@ class GeminiService:
             return await self._execute_with_retry(_call_gemini)
         except Exception as e:
             print(f"Error Gemini Intent Final: {e}")
-            return []
+            return current_state # Devolvemos el estado anterior en caso de error
 
     async def generate_shopkeeper_response(self, user_query: str, context_str: str) -> str:
         prompt = f"""

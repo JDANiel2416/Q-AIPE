@@ -115,34 +115,34 @@ async def search_smart(request: SearchRequest, db: Session = Depends(get_db)):
         db.add(user_msg)
         db.commit()
 
-        # C. Reconstruir historial desde la BD (Últimos 10 mensajes)
-        # Obtenemos los mensajes ordenados por fecha
+        # C. Reconstruir historial desde la BD (Solo para logs, ya no se envía a Gemini)
         db_messages = db.query(ChatMessage).filter(
             ChatMessage.session_id == current_session.id
-        ).order_by(ChatMessage.created_at.asc()).all() # Gemini necesita orden cronológico
+        ).order_by(ChatMessage.created_at.asc()).all()
         
         print(f"📜 [DB-MEM] Mensajes recuperados de la BD: {len(db_messages)}")
 
-        # Convertimos a formato para Gemini
-        history_for_gemini = [
-            {"role": msg.role, "content": msg.content} 
-            for msg in db_messages
-        ]
-        
-        # Opcional: Recortar si es muy largo (ej: últimos 10 turnos)
-        if len(history_for_gemini) > 20: 
-            history_for_gemini = history_for_gemini[-20:]
+        # D. Usar el ESTADO PERSISTENTE de búsqueda
+        search_state = current_session.search_state or []
+    else:
+        search_state = []
 
-    # --- 2. INTELIGENCIA (Usando el historial reconstruido) ---
-    print(f"🤖 [DEBUG] Historial enviado a Gemini ({len(history_for_gemini)} msgs): {[m['content'] for m in history_for_gemini]}")
-    intent_items = await gemini_client.interpret_search_intent(request.query, history_for_gemini)
+    # --- 2. INTELIGENCIA (Usando el ESTADO PERSISTENTE) ---
+    print(f"🤖 [DEBUG] Estado previo: {search_state}")
+    
+    # Gemini recibe el query y el estado actual, y devuelve el estado actualizado
+    updated_state = await gemini_client.interpret_search_intent(request.query, search_state)
+    intent_items = updated_state
+    
+    # Persistir el nuevo estado si hay sesión
+    if current_session:
+        current_session.search_state = updated_state
+        db.commit()
+    
+    print(f"🤖 [DEBUG] Nuevo Estado Resultante: {updated_state}")
     # ... (Resto de la lógica sigue igual)
 
-    # 1. Interpretar intención (Gemini devuelve cantidades)
-    intent_items = await gemini_client.interpret_search_intent(
-        request.query, 
-        history_for_gemini # Changed from request.conversation_history
-    )
+    # Los intent_items ya vienen del paso 2 (updated_state)
     
     # Extraemos keywords
     keywords = [item.get("product_name", "") for item in intent_items]
