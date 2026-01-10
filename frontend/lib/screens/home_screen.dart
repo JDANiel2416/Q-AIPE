@@ -9,6 +9,7 @@ import '../models/search_models.dart';
 import '../services/api_service.dart';
 import '../services/session_service.dart'; // <--- IMPORTANTE: Para Logout
 import 'login_screen.dart'; // <--- Para redirigir al salir
+import 'ticket_screen.dart'; // <--- IMPORTANTE: Importar TicketScreen
 
 // --- MODELOS ---
 enum MessageType { user, botThinking, botResponse }
@@ -864,6 +865,84 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   // --- REEMPLAZA ESTE WIDGET COMPLETO ---
+  // --- LÓGICA DE RESERVA ---
+  void _confirmReservation(BodegaSearchResult bodega) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1F2E),
+        title: const Text("Confirmar Reserva", style: TextStyle(color: Colors.white)),
+        content: const Text(
+          "¿Estás seguro de que deseas reservar estos productos? Se generará un ticket para que pases a recogerlo.",
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text("Seguir comprando", style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              _processReservation(bodega);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF00D9FF),
+              foregroundColor: Colors.black,
+            ),
+            child: const Text("Sí, reservar"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _processReservation(BodegaSearchResult bodega) async {
+    // Mostrar loading
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      final response = await _apiService.createReservation(
+        _currentUserId ?? "", // Asegúrate de manejar si es null
+        bodega.bodegaId,
+        bodega.foundItems,
+      );
+
+      // Cerrar loading
+      if (mounted) Navigator.of(context).pop();
+
+      if (response['success'] == true) {
+        // Navegar al TicketScreen
+        if (mounted) {
+           Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => TicketScreen(ticketData: response),
+            ),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text("Error: ${response['message']}"), backgroundColor: Colors.red),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) Navigator.of(context).pop(); // Cerrar loading si falla
+      print("Error reservando: $e");
+      if (mounted) {
+         ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text("Error de conexión: $e"), backgroundColor: Colors.red),
+          );
+      }
+    }
+  }
+
   Widget _buildBodegaCard(BodegaSearchResult bodega) {
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
@@ -911,33 +990,69 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           Container(height: 1, color: Colors.white.withOpacity(0.05)),
           
-          // Botón "Ver en el mapa"
-          InkWell(
-            onTap: () {
-              setState(() {
-                _selectedBodega = bodega;
-                _isMapExpanded = true;
-              });
-            },
-            child: Container(
-              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.map, color: Color(0xFF00D9FF), size: 18),
-                  const SizedBox(width: 8),
-                  const Text(
-                    "Ver en el mapa",
-                    style: TextStyle(
-                      color: Color(0xFF00D9FF),
-                      fontWeight: FontWeight.bold,
-                      fontSize: 14,
+          // BOTONERAS DE ACCIÓN
+          Row(
+            children: [
+              // Botón "Ver en el mapa"
+              Expanded(
+                child: InkWell(
+                  onTap: () {
+                    setState(() {
+                      _selectedBodega = bodega;
+                      _isMapExpanded = true;
+                    });
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    alignment: Alignment.center,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: const [
+                        Icon(Icons.map, color: Color(0xFF00D9FF), size: 18),
+                        SizedBox(width: 8),
+                        Text(
+                          "Ver ubicación",
+                          style: TextStyle(
+                            color: Color(0xFF00D9FF),
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                ],
+                ),
               ),
-            ),
+              Container(width: 1, height: 40, color: Colors.white.withOpacity(0.1)),
+              // Botón "Reservar" (NUEVO)
+              Expanded(
+                child: InkWell(
+                  onTap: () => _confirmReservation(bodega),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    alignment: Alignment.center,
+                    color: const Color(0xFF00D9FF).withOpacity(0.1),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: const [
+                         Icon(Icons.shopping_bag_outlined, color: Colors.white, size: 18),
+                         SizedBox(width: 8),
+                         Text(
+                           "Reservar",
+                           style: TextStyle(
+                             color: Colors.white,
+                             fontWeight: FontWeight.bold,
+                             fontSize: 14,
+                           ),
+                         ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
+
           Container(height: 1, color: Colors.white.withOpacity(0.05)),
           
           // --- LISTA DE PRODUCTOS DETALLADA ---

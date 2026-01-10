@@ -627,60 +627,11 @@ class _AddProductScreenState extends State<AddProductScreen> {
                               label: "Nombre del Producto",
                               validator: (v) => v!.isEmpty ? "Campo obligatorio" : null,
                             ),
+                            const SizedBox(height: 24),
                           ] else ...[
-                            // Vista previa del nombre generado
-                            Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.05),
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: Colors.white.withOpacity(0.1)),
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text(
-                                    "Nombre Generado",
-                                    style: TextStyle(color: Color(0xFFA0A8B8), fontSize: 12),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    _computedName,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
+                            // Para categorías estructuradas, sin campo de nombre
+                            const SizedBox(height: 0),
                           ],
-                          const SizedBox(height: 12),
-                          
-                          Row(
-                            children: [
-                              Expanded(
-                                child: _buildTextField(
-                                  controller: _priceCtrl,
-                                  label: "Precio (S/)",
-                                  keyboardType: TextInputType.number,
-                                  validator: (v) => v!.isEmpty ? "Requerido" : null,
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: _buildTextField(
-                                  controller: _stockCtrl,
-                                  label: "Stock Inicial",
-                                  keyboardType: TextInputType.number,
-                                  validator: (v) => v!.isEmpty ? "Requerido" : null,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 24),
                           
                           // Sección de detalles específicos
                           Row(
@@ -716,6 +667,30 @@ class _AddProductScreenState extends State<AddProductScreen> {
                             child: _buildDynamicFields(),
                           ),
 
+                          const SizedBox(height: 24),
+                          
+                          // Precio y Stock (ahora después de los detalles)
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _buildTextField(
+                                  controller: _priceCtrl,
+                                  label: "Precio (S/)",
+                                  keyboardType: TextInputType.number,
+                                  validator: (v) => v!.isEmpty ? "Requerido" : null,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: _buildTextField(
+                                  controller: _stockCtrl,
+                                  label: "Stock Inicial",
+                                  keyboardType: TextInputType.number,
+                                  validator: (v) => v!.isEmpty ? "Requerido" : null,
+                                ),
+                              ),
+                            ],
+                          ),
                           const SizedBox(height: 32),
                           
                           // Botón de guardar

@@ -3,7 +3,8 @@ import 'package:flutter/material.dart';
 import '../services/session_service.dart'; // Importamos el archivo 1
 import 'home_screen.dart';
 import 'login_screen.dart';
-import 'bodeguero_screen.dart'; // Import necesario
+import 'product_management_screen.dart';
+import 'dashboard_screen.dart';
 
 class SplashScreen extends StatefulWidget { // <--- ESTA ES LA CLASE QUE BUSCA MAIN
   const SplashScreen({super.key});
@@ -36,7 +37,7 @@ class _SplashScreenState extends State<SplashScreen> {
       if (role == "BODEGUERO") {
         Navigator.pushReplacement(
           context, 
-          MaterialPageRoute(builder: (_) => const BodegueroScreen()) // FALTA IMPORTAR
+          MaterialPageRoute(builder: (_) => const DashboardScreen())
         );
       } else {
         Navigator.pushReplacement(

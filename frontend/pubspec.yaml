@@ -39,8 +39,13 @@ dependencies:
   cupertino_icons: ^1.0.8
   yandex_mapkit: ^4.2.1
   shared_preferences: ^2.5.4
-  geolocator: ^13.0.1
+  geolocator: ^11.0.0
+  pdf: ^3.10.0
+  printing: ^5.11.0
+  qr_flutter: ^4.1.0
   permission_handler: ^11.3.1
+  fl_chart: ^0.66.0
+  image_picker: ^1.0.7
 
 dev_dependencies:
   flutter_test:

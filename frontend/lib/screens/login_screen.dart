@@ -4,7 +4,8 @@ import 'package:geolocator/geolocator.dart'; // <--- GPS
 import 'package:permission_handler/permission_handler.dart'; // <--- Permisos
 import '../services/api_service.dart';
 import 'home_screen.dart';
-import 'bodeguero_screen.dart';
+import 'product_management_screen.dart';
+import 'dashboard_screen.dart';
 import '../services/session_service.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -209,7 +210,7 @@ class _LoginScreenState extends State<LoginScreen> {
     await Future.delayed(const Duration(seconds: 1));
     if (mounted) {
       if (res['role'] == "BODEGUERO" || _tempDni == "22222222") { 
-         Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const BodegueroScreen()));
+         Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const DashboardScreen()));
       } else {
          Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const HomeScreen()));
       }
