@@ -1,4 +1,5 @@
 import 'package:shared_preferences/shared_preferences.dart';
+import 'api_service.dart'; // Import para limpiar FCM token
 
 class SessionService {
   static const String _keyUserId = 'user_id';
@@ -29,9 +30,21 @@ class SessionService {
     return prefs.getString(_keyUserRole);
   }
 
-  // Cerrar sesión (Borrar datos)
+  // Cerrar sesión (Borrar datos y limpiar FCM token)
   Future<void> logout() async {
     final prefs = await SharedPreferences.getInstance();
+    
+    // IMPORTANTE: Limpiar FCM token ANTES de borrar el userId
+    final userId = prefs.getString(_keyUserId);
+    if (userId != null && userId.isNotEmpty) {
+      try {
+        await ApiService().unregisterFcmToken(userId);
+        print("🔓 FCM Token eliminado del servidor");
+      } catch (e) {
+        print("⚠️ Error limpiando FCM token: $e");
+      }
+    }
+    
     await prefs.clear();
   }
 }

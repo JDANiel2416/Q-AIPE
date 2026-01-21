@@ -13,6 +13,16 @@ app = FastAPI(
     openapi_url=f"{settings.API_V1_STR}/openapi.json"
 )
 
+# Servir archivos estáticos (imágenes)
+from fastapi.staticfiles import StaticFiles
+import os
+
+static_dir = "static"
+if not os.path.exists(static_dir):
+    os.makedirs(static_dir)
+
+app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
 # --- CONFIGURACIÓN DE CORS (SOLUCIÓN AL ERROR) ---
 # Esto permite que el Frontend (Flutter Web/Mobile/Desktop) envíe peticiones al Backend
 origins = [
@@ -30,6 +40,14 @@ app.add_middleware(
 
 # Conectar rutas
 app.include_router(api_router, prefix=settings.API_V1_STR)
+
+# Notifications Router
+from app.api.endpoints import notifications
+app.include_router(notifications.router, prefix="/api/v1/notifications", tags=["notifications"])
+
+# Client Router (Mis Chats, Historial, Perfil)
+from app.api.endpoints import client
+app.include_router(client.router, prefix="/api/v1/client", tags=["client"])
 
 @app.get("/")
 def root():

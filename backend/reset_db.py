@@ -8,6 +8,48 @@ sys.path.append(os.getcwd())
 from app.db.session import SessionLocal, engine
 from app.models.tables import Base, User, Bodega, MasterProduct, StoreInventory
 
+def migrate_database():
+    """
+    Ejecutar migraciones (agregar columnas nuevas) SIN borrar datos existentes.
+    Usar cuando solo quieres actualizar la estructura de tablas.
+    """
+    print("🔄 EJECUTANDO MIGRACIONES...")
+    
+    with engine.connect() as connection:
+        # --- USUARIOS ---
+        print("   - Migrando tabla 'users'...")
+        try:
+            connection.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS fcm_token VARCHAR"))
+            print("     ✅ Columna 'fcm_token' verificada")
+        except Exception as e:
+            print(f"     ⚠️ fcm_token: {e}")
+        
+        # --- CHAT SESSIONS ---
+        print("   - Migrando tabla 'chat_sessions'...")
+        try:
+            connection.execute(text("ALTER TABLE chat_sessions ADD COLUMN IF NOT EXISTS title VARCHAR"))
+            print("     ✅ Columna 'title' verificada")
+        except Exception as e:
+            print(f"     ⚠️ title: {e}")
+        
+        try:
+            connection.execute(text("ALTER TABLE chat_sessions ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE"))
+            print("     ✅ Columna 'is_active' verificada")
+        except Exception as e:
+            print(f"     ⚠️ is_active: {e}")
+        
+        # 3. Campos nuevos para chat mejorado (Persistencia de tarjetas)
+        print("   - Migrando tabla 'chat_messages'...")
+        try:
+            connection.execute(text("ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS attachment_data JSONB"))
+            print("     ✅ Columna 'attachment_data' verificada")
+        except Exception as e:
+            print(f"     ⚠️ attachment_data: {e}")
+        
+        connection.commit()
+    
+    print("🎉 MIGRACIONES COMPLETADAS")
+
 def reset_database():
     print("💥 INICIANDO LIMPIEZA NUCLEAR...")
     
@@ -15,6 +57,8 @@ def reset_database():
     # Esto elimina las tablas "fantasma" que Python no conoce pero PostgreSQL sí.
     with engine.connect() as connection:
         print("   - Eliminando tablas conflictivas...")
+        connection.execute(text("DROP TABLE IF EXISTS chat_messages CASCADE;"))
+        connection.execute(text("DROP TABLE IF EXISTS chat_sessions CASCADE;"))
         connection.execute(text("DROP TABLE IF EXISTS reservation_items CASCADE;"))
         connection.execute(text("DROP TABLE IF EXISTS reservations CASCADE;"))
         connection.execute(text("DROP TABLE IF EXISTS store_inventory CASCADE;"))
@@ -53,14 +97,16 @@ def reset_database():
             owner_id=don_lucho.id,
             name="Bodega Don Lucho",
             address="Av. La Rivera 123",
-            latitude=-8.0783, longitude=-79.1180,
+            latitude=-8.083267411952374, 
+            longitude=-79.08689281105985,
             manual_override="OPEN", rating=4.8
         )
         bodega_pepe = Bodega(
             owner_id=tio_pepe.id,
             name="Bodega El Tío Pepe",
             address="Calle Los Olivos 456",
-            latitude=-8.0765, longitude=-79.1195,
+            latitude=-8.082630380806767, 
+            longitude=-79.08790687508669,
             manual_override="OPEN", rating=4.5
         )
         db.add_all([bodega_lucho, bodega_pepe])
@@ -70,14 +116,22 @@ def reset_database():
         p1 = MasterProduct(name="Arroz Costeño Graneadito", category="Abarrotes", synonyms=["arroz", "kilo de arroz"], default_unit="kg")
         p2 = MasterProduct(name="Cerveza Pilsen Callao 630ml", category="Licores", synonyms=["chela", "birra", "pilsen"], default_unit="botella")
         p3 = MasterProduct(name="Coca Cola 1.5L", category="Bebidas", synonyms=["gaseosa", "coca"], default_unit="botella")
-        
-        db.add_all([p1, p2, p3])
+        p4 = MasterProduct(name="Inca Kola 3L", category="Bebidas", synonyms=["gaseosa", "inka"], default_unit="botella")
+        p5 = MasterProduct(name="Inca Kola 2L", category="Bebidas", synonyms=["gaseosa", "inka"], default_unit="botella")
+        p6 = MasterProduct(name="Inca Kola 1.5L", category="Bebidas", synonyms=["gaseosa", "inka"], default_unit="botella")
+        p7 = MasterProduct(name="Inca Kola 500ml", category="Bebidas", synonyms=["gaseosa", "inka", "personal"], default_unit="botella")
+
+        db.add_all([p1, p2, p3, p4, p5, p6, p7])
         db.commit()
 
         # --- INVENTARIO ---
         inv = [
             StoreInventory(bodega_id=bodega_lucho.id, product_id=p1.id, price=4.50, stock_quantity=20),
             StoreInventory(bodega_id=bodega_lucho.id, product_id=p3.id, price=7.50, stock_quantity=15),
+            StoreInventory(bodega_id=bodega_lucho.id, product_id=p5.id, price=9.00, stock_quantity=10, is_available=True), # Inca 2L (SÍ HAY)
+            StoreInventory(bodega_id=bodega_lucho.id, product_id=p6.id, price=6.00, stock_quantity=24, is_available=True), # Inca 1.5L (SÍ HAY)
+            # Inca 3L (p4) NO AGREGAMOS para simular que no hay
+            
             StoreInventory(bodega_id=bodega_pepe.id, product_id=p2.id, price=8.00, stock_quantity=50), 
             StoreInventory(bodega_id=bodega_pepe.id, product_id=p1.id, price=4.40, stock_quantity=10)
         ]
@@ -93,4 +147,21 @@ def reset_database():
         db.close()
 
 if __name__ == "__main__":
-    reset_database()
+    print("\n🔧 HERRAMIENTA DE BASE DE DATOS")
+    print("=" * 40)
+    print("1. MIGRAR - Agregar columnas nuevas (NO borra datos)")
+    print("2. RESET  - Borrar TODO y recrear desde cero")
+    print("=" * 40)
+    
+    opcion = input("Elige opción (1/2): ").strip()
+    
+    if opcion == "1":
+        migrate_database()
+    elif opcion == "2":
+        confirmacion = input("⚠️ Esto BORRARÁ todos los datos. Escribir 'BORRAR' para confirmar: ")
+        if confirmacion == "BORRAR":
+            reset_database()
+        else:
+            print("❌ Operación cancelada.")
+    else:
+        print("❌ Opción inválida.")

@@ -2,9 +2,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart'; // <--- GPS
 import 'package:permission_handler/permission_handler.dart'; // <--- Permisos
+import '../services/push_notification_service.dart';
 import '../services/api_service.dart';
 import 'home_screen.dart';
-import 'bodeguero_screen.dart';
+import 'product_management_screen.dart';
+import 'dashboard_screen.dart';
 import '../services/session_service.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -45,7 +47,9 @@ class _LoginScreenState extends State<LoginScreen> {
     // Si no es un botón de acción (GPS/Rol), agregamos el mensaje del usuario
     if (_step != 4 && _step != 5) {
       setState(() {
-        _messages.add({"role": "user", "text": text});
+        // Ocultar contraseña en el chat (mostrar asteriscos)
+        final displayText = (_step == 3) ? "••••••••" : text;
+        _messages.add({"role": "user", "text": displayText});
         _isLoading = true;
       });
       _controller.clear();
@@ -198,6 +202,7 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _messages.removeWhere((m) => m["role"] == "thinking"));
   }
 
+
   void _loginSuccess(Map<String, dynamic> res) async {
     // Guardar ID y ROL
     await SessionService().saveSession(
@@ -205,11 +210,16 @@ class _LoginScreenState extends State<LoginScreen> {
       role: res["role"], // Guardamos el rol que viene del backend
     );
     
+    // REGISTRAR TOKEN FCM PARA NOTIFICACIONES
+    if (res['role'] == 'BODEGUERO') {
+      await PushNotificationService().registerTokenForUser((res["user_id"] ?? "").toString());
+    }
+    
     _botSay("¡Bienvenido! 🚀");
     await Future.delayed(const Duration(seconds: 1));
     if (mounted) {
       if (res['role'] == "BODEGUERO" || _tempDni == "22222222") { 
-         Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const BodegueroScreen()));
+         Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const DashboardScreen()));
       } else {
          Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const HomeScreen()));
       }

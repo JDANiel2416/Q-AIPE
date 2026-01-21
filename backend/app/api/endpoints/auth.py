@@ -72,6 +72,45 @@ def login(req: LoginRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=401, detail="Contraseña incorrecta")
     return {"success": True, "user_id": str(user.id), "name": user.full_name, "role": user.role}
 
+
+class RegisterFCMTokenRequest(BaseModel):
+    user_id: str
+    fcm_token: str
+
+
+@router.post("/register-fcm-token")
+def register_fcm_token(req: RegisterFCMTokenRequest, db: Session = Depends(get_db)):
+    """Registra el token FCM de un usuario para recibir notificaciones push."""
+    user = db.query(User).filter(User.id == req.user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    
+    user.fcm_token = req.fcm_token
+    db.commit()
+    
+    print(f"✅ FCM Token registrado para usuario {user.full_name}: {req.fcm_token[:30]}...")
+    return {"success": True, "message": "FCM token registrado correctamente"}
+
+
+class UnregisterFCMTokenRequest(BaseModel):
+    user_id: str
+
+
+@router.post("/unregister-fcm-token")
+def unregister_fcm_token(req: UnregisterFCMTokenRequest, db: Session = Depends(get_db)):
+    """Elimina el token FCM de un usuario al cerrar sesión (evita notificaciones cruzadas)."""
+    user = db.query(User).filter(User.id == req.user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    
+    old_token = user.fcm_token
+    user.fcm_token = None  # Limpiar token
+    db.commit()
+    
+    if old_token:
+        print(f"🔓 FCM Token eliminado para usuario {user.full_name}")
+    return {"success": True, "message": "FCM token eliminado correctamente"}
+
 @router.post("/register")
 async def register(req: RegisterRequest, db: Session = Depends(get_db)): # <--- 1. AHORA ES ASYNC
     # Validar si ya existe

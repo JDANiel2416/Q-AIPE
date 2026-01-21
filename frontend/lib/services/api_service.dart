@@ -7,15 +7,21 @@ import '../models/inventory_models.dart';
 
 class ApiService {
   static String get baseUrl {
-    if (kIsWeb) return "http://127.0.0.1:8000/api/v1";
+    //if (kIsWeb) return "http://127.0.0.1:8000/api/v1";
     
     // OJO: Cambia los X por tu IP real, ejemplo: 192.168.1.15
-    if (Platform.isAndroid) return "http://192.168.1.48:8000/api/v1"; 
+    //if (Platform.isAndroid) return "http://192.168.0.103:8000/api/v1"; 
     
-    return "http://127.0.0.1:8000/api/v1";
+    //return "http://127.0.0.1:8000/api/v1";
+    const String publicUrl = "https://4dc065f76bd3.ngrok-free.app";
+    return "$publicUrl/api/v1";
   }
 
-  Future<bool> addProduct(String userId, ProductCreateRequest product) async {
+  static String get host {
+    return baseUrl.replaceAll("/api/v1", ""); 
+  }
+
+  Future<Map<String, dynamic>> addProduct(String userId, ProductCreateRequest product) async {
     final url = Uri.parse('$baseUrl/bodeguero/add-product?user_id=$userId');
     
     try {
@@ -25,15 +31,218 @@ class ApiService {
         body: jsonEncode(product.toJson()),
       );
 
+      final data = jsonDecode(utf8.decode(response.bodyBytes));
+
       if (response.statusCode == 200) {
-        return true;
+        return {"success": true, "message": "Producto agregado correctamente"};
+      } else if (response.statusCode == 409) {
+        return {"success": false, "status": 409, "message": data['detail']};
       } else {
-        print("Error al crear producto: ${response.body}");
-        return false;
+        return {"success": false, "message": data['detail'] ?? "Error desconocido"};
       }
     } catch (e) {
       print("Error de conexión: $e");
-      return false;
+      return {"success": false, "message": "Error de conexión: $e"};
+    }
+  }
+
+  Future<Map<String, dynamic>> updateProduct(
+    String userId, 
+    String productName, 
+    String category,
+    double price, 
+    int stock
+  ) async {
+    final url = Uri.parse('$baseUrl/bodeguero/update-product?user_id=$userId');
+    
+    try {
+      final response = await http.put(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "product_name": productName,
+          "category": category,
+          "price": price,
+          "stock": stock,
+        }),
+      );
+
+      final data = jsonDecode(utf8.decode(response.bodyBytes));
+
+      if (response.statusCode == 200) {
+        return {"success": true, "message": data['message'] ?? "Producto actualizado"};
+      } else {
+        return {"success": false, "message": data['detail'] ?? "Error al actualizar"};
+      }
+    } catch (e) {
+      print("Error de conexión: $e");
+      return {"success": false, "message": "Error de conexión: $e"};
+    }
+  }
+
+  // NUEVO: Actualizar producto por ID con suma de stock
+  Future<Map<String, dynamic>> updateProductStock(
+    String userId,
+    int productId,
+    double price,
+    int stockToAdd,
+  ) async {
+    final url = Uri.parse('$baseUrl/bodeguero/update-product-by-id?user_id=$userId');
+    
+    try {
+      final response = await http.put(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "product_id": productId,
+          "price": price,
+          "stock_to_add": stockToAdd,
+        }),
+      );
+
+      final data = jsonDecode(utf8.decode(response.bodyBytes));
+
+      if (response.statusCode == 200) {
+        return {"success": true, "message": data['message'] ?? "Producto actualizado"};
+      } else {
+        return {"success": false, "message": data['detail'] ?? "Error al actualizar"};
+      }
+    } catch (e) {
+      print("Error de conexión: $e");
+      return {"success": false, "message": "Error de conexión: $e"};
+    }
+  }
+
+  // Obtener perfil del bodeguero
+  Future<Map<String, dynamic>> getProfile(String userId) async {
+    final url = Uri.parse('$baseUrl/bodeguero/profile?user_id=$userId');
+    
+    try {
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        return jsonDecode(utf8.decode(response.bodyBytes));
+      }
+      return {};
+    } catch (e) {
+      print("Error fetching profile: $e");
+      return {};
+    }
+  }
+
+  // Actualizar perfil del bodeguero
+  Future<Map<String, dynamic>> updateProfile(
+    String userId,
+    String email,
+    String phone,
+    String bodegaName,
+  ) async {
+    final url = Uri.parse('$baseUrl/bodeguero/update-profile?user_id=$userId');
+    
+    try {
+      final response = await http.put(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "email": email,
+          "phone_number": phone,
+          "bodega_name": bodegaName,
+        }),
+      );
+
+      final data = jsonDecode(utf8.decode(response.bodyBytes));
+
+      if (response.statusCode == 200) {
+        return {"success": true, "message": data['message'] ?? "Perfil actualizado"};
+      } else {
+        return {"success": false, "message": data['detail'] ?? "Error al actualizar"};
+      }
+    } catch (e) {
+      print("Error updating profile: $e");
+      return {"success": false, "message": "Error de conexión: $e"};
+    }
+  }
+
+  // Subir foto de perfil
+  Future<Map<String, dynamic>> uploadProfilePhoto(String userId, File imageFile) async {
+    final url = Uri.parse('$baseUrl/bodeguero/upload-photo?user_id=$userId');
+    
+    try {
+      final request = http.MultipartRequest('POST', url);
+      request.files.add(
+        await http.MultipartFile.fromPath(
+          'file',
+          imageFile.path,
+        ),
+      );
+
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+      
+      final data = jsonDecode(utf8.decode(response.bodyBytes));
+
+      if (response.statusCode == 200) {
+        return {
+          "success": true, 
+          "message": data['message'] ?? "Foto actualizada",
+          "photo_url": data['photo_url']
+        };
+      } else {
+        return {"success": false, "message": data['detail'] ?? "Error al subir foto"};
+      }
+    } catch (e) {
+      print("Error uploading photo: $e");
+      return {"success": false, "message": "Error de conexión: $e"};
+    }
+  }
+
+  // Obtener pedidos
+  Future<List<dynamic>> getOrders(String userId) async {
+    final url = Uri.parse('$baseUrl/bodeguero/orders?user_id=$userId');
+    try {
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        return jsonDecode(utf8.decode(response.bodyBytes));
+      }
+      return [];
+    } catch (e) {
+      print("Error fetching orders: $e");
+      return [];
+    }
+  }
+
+  // NUEVO: Obtener un pedido específico por ID (para navegación desde notificaciones)
+  Future<Map<String, dynamic>> getOrderById(String orderId) async {
+    final url = Uri.parse('$baseUrl/bodeguero/orders/$orderId');
+    try {
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        return jsonDecode(utf8.decode(response.bodyBytes));
+      }
+      return {};
+    } catch (e) {
+      print("Error fetching order by id: $e");
+      return {};
+    }
+  }
+
+  // Actualizar estado de pedido
+  Future<Map<String, dynamic>> updateOrderStatus(String orderId, String status) async {
+    final url = Uri.parse('$baseUrl/bodeguero/orders/$orderId/status');
+    try {
+      final response = await http.put(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({"status": status}),
+      );
+      
+      final data = jsonDecode(utf8.decode(response.bodyBytes));
+      
+      if (response.statusCode == 200) {
+        return {"success": true, "message": data['message']};
+      }
+      return {"success": false, "message": "Error al actualizar"};
+    } catch (e) {
+      return {"success": false, "message": "Error de conexión: $e"};
     }
   }
 
@@ -42,14 +251,16 @@ class ApiService {
       String query, 
       double userLat, 
       double userLon, 
-      [List<Map<String, String>> history = const []]
+      [String? userId, List<Map<String, String>> history = const [], String? sessionId] // <--- Added sessionId
   ) async {
     final url = Uri.parse('$baseUrl/search/smart');
     
     final body = {
       "query": query,
-      "user_lat": userLat, // Usamos las coordenadas reales del mapa
+      "user_lat": userLat,
       "user_lon": userLon,
+      if (userId != null) "user_id": userId,
+      if (sessionId != null) "session_id": sessionId, // <--- Send it
       "conversation_history": history 
     };
 
@@ -140,7 +351,7 @@ Future<Map<String, dynamic>> consultDni(String dni) async {
   }
 
 
-  Future<List<dynamic>> getMyInventory(String userId) async {
+  Future<dynamic> getMyInventory(String userId) async {
     final url = Uri.parse('$baseUrl/bodeguero/my-inventory?user_id=$userId');
     try {
       final response = await http.get(url);
@@ -189,6 +400,257 @@ Future<Map<String, dynamic>> consultDni(String dni) async {
       }
     } catch (e) {
       return {"success": false, "message": "Error: $e"};
+    }
+  }
+
+  Future<Map<String, dynamic>> createReservation(
+    String userId, 
+    String bodegaId, 
+    List<dynamic> items
+  ) async {
+    final url = Uri.parse('$baseUrl/reservations/create');
+    
+    // Transformamos los items al formato que espera el backend
+    final formattedItems = items.map((item) {
+      // Si es un mapa (por si acaso), usamos [], si es objeto usamos .propiedad
+      // Pero como en Dart no podemos usar [] en objetos que no lo soportan sin error,
+      // asumimos que es ProductItem ya que eso envía el home_screen.
+      
+      // Opcion segura: reflection o dynamic check, pero lo más simple es asumir objeto
+      // dado que es lo que enviamos desde HomeScreen.
+      return {
+        "product_id": (item as dynamic).productId,
+        "product_name": (item as dynamic).name, 
+        "quantity": (item as dynamic).requestedQuantity,
+        "unit_price": (item as dynamic).price,
+      };
+    }).toList();
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "user_id": userId,
+          "bodega_id": bodegaId,
+          "items": formattedItems
+        }),
+      );
+
+      final data = jsonDecode(utf8.decode(response.bodyBytes));
+
+      if (response.statusCode == 200) {
+        return data;
+      } else {
+        return {"success": false, "message": data["detail"] ?? "Error al reservar"};
+      }
+    } catch (e) {
+      return {"success": false, "message": "Error de conexión: $e"};
+    }
+  }
+
+  // Eliminar producto por ID
+  Future<bool> deleteProduct(String userId, int productId) async {
+    final url = Uri.parse('$baseUrl/bodeguero/delete-product?user_id=$userId&product_id=$productId');
+    
+    try {
+      final response = await http.delete(url);
+      return response.statusCode == 200;
+    } catch (e) {
+      print("Error deleting product: $e");
+      return false;
+    }
+  }
+
+  // Registrar token FCM para notificaciones push
+  Future<bool> registerFcmToken(String userId, String fcmToken) async {
+    final url = Uri.parse('$baseUrl/auth/register-fcm-token');
+    
+    try {
+      final response = await http.post(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "user_id": userId,
+          "fcm_token": fcmToken
+        }),
+      );
+      
+      if (response.statusCode == 200) {
+        print("✅ FCM Token registered successfully");
+        return true;
+      } else {
+        print("❌ Failed to register FCM token: ${response.body}");
+        return false;
+      }
+    } catch (e) {
+      print("Error registering FCM token: $e");
+      return false;
+    }
+  }
+
+  // NUEVO: Obtener estadísticas del dashboard
+  Future<Map<String, dynamic>> getDashboardStats(String userId) async {
+    final url = Uri.parse('$baseUrl/bodeguero/dashboard-stats?user_id=$userId');
+    
+    try {
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        return jsonDecode(utf8.decode(response.bodyBytes));
+      }
+      return {};
+    } catch (e) {
+      print("Error fetching dashboard stats: $e");
+      return {};
+    }
+  }
+
+  // --- CLIENTE: Perfil, Chats, Pedidos ---
+
+  /// Obtener perfil del usuario (nombre, email, etc.)
+  Future<Map<String, dynamic>> getUserProfile(String userId) async {
+    final url = Uri.parse('$baseUrl/client/profile?user_id=$userId');
+    
+    try {
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        return jsonDecode(utf8.decode(response.bodyBytes));
+      }
+      return {};
+    } catch (e) {
+      print("Error fetching user profile: $e");
+      return {};
+    }
+  }
+
+  /// Obtener lista de chats del usuario
+  Future<List<dynamic>> getUserChats(String userId) async {
+    final url = Uri.parse('$baseUrl/client/chats?user_id=$userId');
+    
+    try {
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        return jsonDecode(utf8.decode(response.bodyBytes));
+      }
+      return [];
+    } catch (e) {
+      print("Error fetching user chats: $e");
+      return [];
+    }
+  }
+
+  /// Crear nueva sesión de chat (para recargar)
+  Future<Map<String, dynamic>> createNewChatSession(String userId) async {
+    final url = Uri.parse('$baseUrl/client/chats/new?user_id=$userId');
+    
+    try {
+      final response = await http.post(url);
+      if (response.statusCode == 200) {
+        return jsonDecode(utf8.decode(response.bodyBytes));
+      }
+      return {};
+    } catch (e) {
+      print("Error creating new chat session: $e");
+      return {};
+    }
+  }
+
+  /// Obtener mensajes de un chat específico
+  Future<Map<String, dynamic>> getChatMessages(String userId, String sessionId) async {
+    final url = Uri.parse('$baseUrl/client/chats/$sessionId/messages?user_id=$userId');
+    
+    try {
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        return jsonDecode(utf8.decode(response.bodyBytes));
+      }
+      return {};
+    } catch (e) {
+      print("Error fetching chat messages: $e");
+      return {};
+    }
+  }
+
+  /// Obtener historial de pedidos pagados
+  Future<List<dynamic>> getUserOrders(String userId) async {
+    final url = Uri.parse('$baseUrl/client/orders?user_id=$userId');
+    
+    try {
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        return jsonDecode(utf8.decode(response.bodyBytes));
+      }
+      return [];
+    } catch (e) {
+      print("Error fetching user orders: $e");
+      return [];
+    }
+  }
+
+  /// Activar un chat específico (marcarlo como actual)
+  Future<Map<String, dynamic>> activateChatSession(String userId, String sessionId) async {
+    final url = Uri.parse('$baseUrl/client/chats/$sessionId/activate?user_id=$userId');
+    
+    try {
+      final response = await http.put(url);
+      if (response.statusCode == 200) {
+        return jsonDecode(utf8.decode(response.bodyBytes));
+      }
+      return {};
+    } catch (e) {
+      print("Error activating chat session: $e");
+      return {};
+    }
+  }
+
+  /// Eliminar un chat específico
+  Future<Map<String, dynamic>> deleteChatSession(String userId, String sessionId) async {
+    final url = Uri.parse('$baseUrl/client/chats/$sessionId?user_id=$userId');
+    
+    try {
+      final response = await http.delete(url);
+      if (response.statusCode == 200) {
+        return jsonDecode(utf8.decode(response.bodyBytes));
+      }
+      return {"deleted": false};
+    } catch (e) {
+      print("Error deleting chat session: $e");
+      return {"deleted": false};
+    }
+  }
+
+  /// Obtener el chat activo actual (o crear uno nuevo si no existe)
+  Future<Map<String, dynamic>> getCurrentChatSession(String userId) async {
+    final url = Uri.parse('$baseUrl/client/chats/current?user_id=$userId');
+    
+    try {
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        return jsonDecode(utf8.decode(response.bodyBytes));
+      }
+      return {};
+    } catch (e) {
+      print("Error getting current chat: $e");
+      return {};
+    }
+  }
+
+  /// Eliminar token FCM al cerrar sesión (evita notificaciones cruzadas)
+  Future<bool> unregisterFcmToken(String userId) async {
+    final url = Uri.parse('$baseUrl/auth/unregister-fcm-token');
+    
+    try {
+      final response = await http.post(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "user_id": userId,
+        }),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      print("Error unregistering FCM token: $e");
+      return false;
     }
   }
 

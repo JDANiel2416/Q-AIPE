@@ -9,6 +9,9 @@ import '../models/search_models.dart';
 import '../services/api_service.dart';
 import '../services/session_service.dart'; // <--- IMPORTANTE: Para Logout
 import 'login_screen.dart'; // <--- Para redirigir al salir
+import 'ticket_screen.dart'; // <--- IMPORTANTE: Importar TicketScreen
+import 'my_chats_screen.dart'; // <--- Para Mis Chats
+import 'orders_history_screen.dart'; // <--- Para Historial de Pedidos
 
 // --- MODELOS ---
 enum MessageType { user, botThinking, botResponse }
@@ -59,9 +62,15 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isMapExpanded = false;
   BodegaSearchResult? _selectedBodega; // Para centrar el mapa en una bodega específica
 
+  // --- NUEVO: ID del usuario para persistencia ---
+  String? _currentUserId;
+  String _userFirstName = "Usuario"; // Nombre para mostrar en drawer
+  String? _chatSessionId; // <--- NUEVO: ID de la sesión de chat actual
+
   @override
   void initState() {
     super.initState();
+    _loadUserSession(); // <--- Cargar ID
     _controller.addListener(() {
       final isTyping = _controller.text.trim().isNotEmpty;
       if (_isTyping != isTyping) {
@@ -76,6 +85,104 @@ class _HomeScreenState extends State<HomeScreen> {
     
     // 3. CAMBIO: Llamamos a la función de obtener ubicación al iniciar
     _getUserLocation();
+  }
+
+  Future<void> _loadUserSession() async {
+    final userId = await SessionService().getUserId();
+    if (mounted) {
+      setState(() {
+        _currentUserId = userId;
+      });
+      print("👤 User ID cargado: $_currentUserId");
+      
+      // Cargar perfil del usuario
+      if (userId != null) {
+        final profile = await _apiService.getUserProfile(userId);
+        if (mounted && profile.isNotEmpty) {
+          setState(() {
+            _userFirstName = profile['first_name'] ?? "Usuario";
+          });
+        }
+      }
+    }
+  }
+
+  /// Iniciar un nuevo chat limpio (para el botón de recarga o "nuevo chat")
+  void _startNewChat() {
+    setState(() {
+      _chatSessionId = null;  // Reset session ID - backend creará uno nuevo al enviar mensaje
+      _messages.clear();      // Limpiar mensajes
+      _isChatStarted = false;
+      _showScrollDownButton = false;
+    });
+    print("🆕 Nuevo chat iniciado (session_id reseteado a null)");
+  }
+
+  /// Cargar un chat específico por su ID
+  Future<void> _loadChatSession(String sessionId) async {
+    if (_currentUserId == null) return;
+    
+    setState(() => _isLoading = true);
+    
+    // IMPORTANTE: Guardar el session_id para que los mensajes posteriores vayan a este chat
+    _chatSessionId = sessionId;
+    print("📂 Cargando chat con session_id: $_chatSessionId");
+    
+    try {
+      final chatData = await _apiService.getChatMessages(_currentUserId!, sessionId);
+      
+      if (chatData.isNotEmpty && mounted) {
+        final messages = chatData['messages'] as List<dynamic>? ?? [];
+        
+        setState(() {
+          _messages.clear();
+          _isChatStarted = messages.isNotEmpty;
+          
+          // Convertir mensajes del backend al formato local
+          for (var msg in messages) {
+            if (msg['role'] == 'user') {
+              _messages.add(ChatMessage(
+                text: msg['content'],
+                type: MessageType.user,
+              ));
+            } else if (msg['role'] == 'assistant') {
+              // Deserializar resultados adjuntos si existen
+              List<BodegaSearchResult>? results;
+              if (msg['attachment'] != null) {
+                try {
+                  final List<dynamic> attachmentList = msg['attachment'];
+                  results = attachmentList
+                      .map((item) => BodegaSearchResult.fromJson(item))
+                      .toList();
+                } catch (e) {
+                  print("Error parsing attachment: $e");
+                }
+              }
+
+              _messages.add(ChatMessage(
+                text: msg['content'],
+                type: MessageType.botResponse,
+                results: results,
+              ));
+            }
+          }
+          
+          _isLoading = false;
+          _showScrollDownButton = false;
+          _isAtBottom = true;
+        });
+        
+        // Scroll al final después de cargar
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _scrollToBottom();
+        });
+      } else {
+        setState(() => _isLoading = false);
+      }
+    } catch (e) {
+      print("Error cargando chat: $e");
+      setState(() => _isLoading = false);
+    }
   }
 
   void _onScroll() {
@@ -273,11 +380,24 @@ class _HomeScreenState extends State<HomeScreen> {
     _scrollToBottom();
 
     try {
-      // 4. CAMBIO: Ahora se envían las coordenadas reales (_userLocation)
-      final response = await _apiService.searchSmart(text, _userLocation.latitude, _userLocation.longitude);
+      // 4. CAMBIO: Ahora se envían las coordenadas reales (_userLocation) y el ID del usuario
+      final response = await _apiService.searchSmart(
+        text, 
+        _userLocation.latitude, 
+        _userLocation.longitude,
+        _currentUserId, // <--- Pasamos el ID para historial
+        [], // history (vacío por ahora)
+        _chatSessionId // <--- NUEVO: Pasamos la sesión específica
+      );
       
       _updateMapMarkers(response.results);
       _moveCameraToFit(response.results);
+      
+      // --- NUEVO: Guardar ID de sesión para persistencia ---
+      if (response.sessionId != null) {
+        _chatSessionId = response.sessionId;
+        print("🔗 Sesión vinculada: $_chatSessionId");
+      }
 
       setState(() {
         _messages.removeLast();
@@ -354,7 +474,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
                     const SizedBox(height: 16),
-                    const Text("Usuario Cliente", style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                    Text(_userFirstName, style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
                     const Text("Verificado RENIEC ✅", style: TextStyle(color: Color(0xFFA0A8B8), fontSize: 12)),
                   ],
                 ),
@@ -366,8 +486,40 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: ListView(
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                   children: [
-                    _buildDrawerItem(Icons.history, "Historial de Pedidos", () {}),
-                    _buildDrawerItem(Icons.chat_bubble_outline, "Mis Chats", () {}),
+                    _buildDrawerItem(Icons.history, "Historial de Pedidos", () {
+                      Navigator.pop(context);
+                      Navigator.push(context, MaterialPageRoute(builder: (_) => const OrdersHistoryScreen()));
+                    }),
+                    _buildDrawerItem(Icons.chat_bubble_outline, "Mis Chats", () async {
+                      Navigator.pop(context);
+                      final result = await Navigator.push(
+                        context, 
+                        MaterialPageRoute(builder: (_) => const MyChatsScreen()),
+                      );
+                      
+                      // Manejar resultado de MyChatsScreen
+                      if (result != null && result is Map<String, dynamic>) {
+                        final action = result['action'];
+                        final sessionId = result['session_id'] ?? result['new_session_id'];
+                        
+                        if (action == 'selected' && sessionId != null) {
+                          // Cargar el chat seleccionado
+                          await _loadChatSession(sessionId);
+                        } else if (action == 'new' || action == 'deleted_current') {
+                          // Nuevo chat vacío - IMPORTANTE: resetear session_id a null
+                          setState(() {
+                            _chatSessionId = null; // <-- NUEVO: Para que el siguiente mensaje cree nueva sesión
+                            _messages.clear();
+                            _isChatStarted = false;
+                            _isLoading = false;
+                            _showScrollDownButton = false;
+                            _isAtBottom = true;
+                            _updateMapMarkers([]);
+                          });
+                          print("🆕 Nuevo chat iniciado desde MyChatsScreen (session_id = null)");
+                        }
+                      }
+                    }),
                     _buildDrawerItem(Icons.favorite_border, "Favoritos", () {}),
                     _buildDrawerItem(Icons.place_outlined, "Mis Direcciones", () {}),
                     const Divider(color: Colors.white10, height: 30),
@@ -650,11 +802,18 @@ class _HomeScreenState extends State<HomeScreen> {
                 });
               }),
               const SizedBox(width: 8),
-              _buildCircleBtn(Icons.refresh_rounded, () {
+              _buildCircleBtn(Icons.refresh_rounded, () async {
+                // Crear nueva sesión de chat en el backend
+                if (_currentUserId != null) {
+                  await _apiService.createNewChatSession(_currentUserId!);
+                }
+                
                 setState(() { 
                   _messages.clear(); 
                   _isChatStarted = false; 
                   _isLoading = false;
+                  _showScrollDownButton = false; // Ocultar botón al recargar
+                  _isAtBottom = true; // Resetear estado de scroll
                   _updateMapMarkers([]); 
                 });
                 _getUserLocation();
@@ -845,6 +1004,84 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   // --- REEMPLAZA ESTE WIDGET COMPLETO ---
+  // --- LÓGICA DE RESERVA ---
+  void _confirmReservation(BodegaSearchResult bodega) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1F2E),
+        title: const Text("Confirmar Reserva", style: TextStyle(color: Colors.white)),
+        content: const Text(
+          "¿Estás seguro de que deseas reservar estos productos? Se generará un ticket para que pases a recogerlo.",
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text("Seguir comprando", style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              _processReservation(bodega);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF00D9FF),
+              foregroundColor: Colors.black,
+            ),
+            child: const Text("Sí, reservar"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _processReservation(BodegaSearchResult bodega) async {
+    // Mostrar loading
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      final response = await _apiService.createReservation(
+        _currentUserId ?? "", // Asegúrate de manejar si es null
+        bodega.bodegaId,
+        bodega.foundItems,
+      );
+
+      // Cerrar loading
+      if (mounted) Navigator.of(context).pop();
+
+      if (response['success'] == true) {
+        // Navegar al TicketScreen
+        if (mounted) {
+           Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => TicketScreen(ticketData: response),
+            ),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text("Error: ${response['message']}"), backgroundColor: Colors.red),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) Navigator.of(context).pop(); // Cerrar loading si falla
+      print("Error reservando: $e");
+      if (mounted) {
+         ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text("Error de conexión: $e"), backgroundColor: Colors.red),
+          );
+      }
+    }
+  }
+
   Widget _buildBodegaCard(BodegaSearchResult bodega) {
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
@@ -892,33 +1129,69 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           Container(height: 1, color: Colors.white.withOpacity(0.05)),
           
-          // Botón "Ver en el mapa"
-          InkWell(
-            onTap: () {
-              setState(() {
-                _selectedBodega = bodega;
-                _isMapExpanded = true;
-              });
-            },
-            child: Container(
-              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.map, color: Color(0xFF00D9FF), size: 18),
-                  const SizedBox(width: 8),
-                  const Text(
-                    "Ver en el mapa",
-                    style: TextStyle(
-                      color: Color(0xFF00D9FF),
-                      fontWeight: FontWeight.bold,
-                      fontSize: 14,
+          // BOTONERAS DE ACCIÓN
+          Row(
+            children: [
+              // Botón "Ver en el mapa"
+              Expanded(
+                child: InkWell(
+                  onTap: () {
+                    setState(() {
+                      _selectedBodega = bodega;
+                      _isMapExpanded = true;
+                    });
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    alignment: Alignment.center,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: const [
+                        Icon(Icons.map, color: Color(0xFF00D9FF), size: 18),
+                        SizedBox(width: 8),
+                        Text(
+                          "Ver ubicación",
+                          style: TextStyle(
+                            color: Color(0xFF00D9FF),
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                ],
+                ),
               ),
-            ),
+              Container(width: 1, height: 40, color: Colors.white.withOpacity(0.1)),
+              // Botón "Reservar" (NUEVO)
+              Expanded(
+                child: InkWell(
+                  onTap: () => _confirmReservation(bodega),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    alignment: Alignment.center,
+                    color: const Color(0xFF00D9FF).withOpacity(0.1),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: const [
+                         Icon(Icons.shopping_bag_outlined, color: Colors.white, size: 18),
+                         SizedBox(width: 8),
+                         Text(
+                           "Reservar",
+                           style: TextStyle(
+                             color: Colors.white,
+                             fontWeight: FontWeight.bold,
+                             fontSize: 14,
+                           ),
+                         ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
+
           Container(height: 1, color: Colors.white.withOpacity(0.05)),
           
           // --- LISTA DE PRODUCTOS DETALLADA ---
