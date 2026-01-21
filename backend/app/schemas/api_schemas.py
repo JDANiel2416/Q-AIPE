@@ -10,6 +10,7 @@ class SearchRequest(BaseModel):
     user_lat: float         # Ej: -8.0783
     user_lon: float         # Ej: -79.1180
     user_id: Optional[UUID] = None # NUEVO: Para identificar al usuario y su historial
+    session_id: Optional[UUID] = None # NUEVO: Para identificar el chat específico
     conversation_history: List[Dict[str, str]] = []
 
 class BodegaStatusUpdate(BaseModel):
@@ -58,6 +59,7 @@ class BodegaSearchResult(BaseModel):
 class SmartSearchResponse(BaseModel):
     message: str
     results: List[BodegaSearchResult]
+    session_id: Optional[UUID] = None # NUEVO: Para que el frontend sepa el ID real
 
 class VoiceUpdateResponse(BaseModel):
     message: str

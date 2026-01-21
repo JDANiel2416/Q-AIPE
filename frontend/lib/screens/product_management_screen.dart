@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'dart:ui' as ui;
 import '../services/api_service.dart';
 import '../services/session_service.dart';
+
 import 'login_screen.dart';
 import 'add_product_screen.dart';
 import 'edit_product_screen.dart';
@@ -76,6 +77,9 @@ class _BodegueroScreenState extends State<BodegueroScreen> with SingleTickerProv
     final uid = await SessionService().getUserId();
     if (uid != null) {
       _userId = uid;
+      
+
+
       final data = await _api.getMyInventory(uid);
       setState(() {
         // Handle new response format: {bodega_name: "X", products: [...]}
@@ -319,6 +323,7 @@ class _BodegueroScreenState extends State<BodegueroScreen> with SingleTickerProv
                     ),
                   ),
                   const SizedBox(width: 16),
+                  // ------------------------------------
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -355,6 +360,7 @@ class _BodegueroScreenState extends State<BodegueroScreen> with SingleTickerProv
                       ],
                     ),
                   ),
+                  // Switch stock
                   Switch(
                     value: inStock,
                     onChanged: (val) => _toggleProduct(prod, val),
@@ -369,6 +375,8 @@ class _BodegueroScreenState extends State<BodegueroScreen> with SingleTickerProv
       },
     );
   }
+
+
 
   Widget _buildCustomAppBar() {
     return Padding(

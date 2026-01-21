@@ -5,6 +5,9 @@ venv/
 # Ignorar secretos y configuración local
 .env
 
+#Ignorar credenciales de Firebase
+firebase-credentials.json
+
 # Ignorar archivos basura de Python
 __pycache__/
 *.pyc

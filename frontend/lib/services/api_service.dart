@@ -13,7 +13,7 @@ class ApiService {
     //if (Platform.isAndroid) return "http://192.168.0.103:8000/api/v1"; 
     
     //return "http://127.0.0.1:8000/api/v1";
-    const String publicUrl = "https://fd46a89b6ce4.ngrok-free.app";
+    const String publicUrl = "https://4dc065f76bd3.ngrok-free.app";
     return "$publicUrl/api/v1";
   }
 
@@ -210,6 +210,21 @@ class ApiService {
     }
   }
 
+  // NUEVO: Obtener un pedido específico por ID (para navegación desde notificaciones)
+  Future<Map<String, dynamic>> getOrderById(String orderId) async {
+    final url = Uri.parse('$baseUrl/bodeguero/orders/$orderId');
+    try {
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        return jsonDecode(utf8.decode(response.bodyBytes));
+      }
+      return {};
+    } catch (e) {
+      print("Error fetching order by id: $e");
+      return {};
+    }
+  }
+
   // Actualizar estado de pedido
   Future<Map<String, dynamic>> updateOrderStatus(String orderId, String status) async {
     final url = Uri.parse('$baseUrl/bodeguero/orders/$orderId/status');
@@ -236,7 +251,7 @@ class ApiService {
       String query, 
       double userLat, 
       double userLon, 
-      [String? userId, List<Map<String, String>> history = const []]
+      [String? userId, List<Map<String, String>> history = const [], String? sessionId] // <--- Added sessionId
   ) async {
     final url = Uri.parse('$baseUrl/search/smart');
     
@@ -245,6 +260,7 @@ class ApiService {
       "user_lat": userLat,
       "user_lon": userLon,
       if (userId != null) "user_id": userId,
+      if (sessionId != null) "session_id": sessionId, // <--- Send it
       "conversation_history": history 
     };
 
@@ -403,6 +419,7 @@ Future<Map<String, dynamic>> consultDni(String dni) async {
       // Opcion segura: reflection o dynamic check, pero lo más simple es asumir objeto
       // dado que es lo que enviamos desde HomeScreen.
       return {
+        "product_id": (item as dynamic).productId,
         "product_name": (item as dynamic).name, 
         "quantity": (item as dynamic).requestedQuantity,
         "unit_price": (item as dynamic).price,
@@ -429,6 +446,211 @@ Future<Map<String, dynamic>> consultDni(String dni) async {
       }
     } catch (e) {
       return {"success": false, "message": "Error de conexión: $e"};
+    }
+  }
+
+  // Eliminar producto por ID
+  Future<bool> deleteProduct(String userId, int productId) async {
+    final url = Uri.parse('$baseUrl/bodeguero/delete-product?user_id=$userId&product_id=$productId');
+    
+    try {
+      final response = await http.delete(url);
+      return response.statusCode == 200;
+    } catch (e) {
+      print("Error deleting product: $e");
+      return false;
+    }
+  }
+
+  // Registrar token FCM para notificaciones push
+  Future<bool> registerFcmToken(String userId, String fcmToken) async {
+    final url = Uri.parse('$baseUrl/auth/register-fcm-token');
+    
+    try {
+      final response = await http.post(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "user_id": userId,
+          "fcm_token": fcmToken
+        }),
+      );
+      
+      if (response.statusCode == 200) {
+        print("✅ FCM Token registered successfully");
+        return true;
+      } else {
+        print("❌ Failed to register FCM token: ${response.body}");
+        return false;
+      }
+    } catch (e) {
+      print("Error registering FCM token: $e");
+      return false;
+    }
+  }
+
+  // NUEVO: Obtener estadísticas del dashboard
+  Future<Map<String, dynamic>> getDashboardStats(String userId) async {
+    final url = Uri.parse('$baseUrl/bodeguero/dashboard-stats?user_id=$userId');
+    
+    try {
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        return jsonDecode(utf8.decode(response.bodyBytes));
+      }
+      return {};
+    } catch (e) {
+      print("Error fetching dashboard stats: $e");
+      return {};
+    }
+  }
+
+  // --- CLIENTE: Perfil, Chats, Pedidos ---
+
+  /// Obtener perfil del usuario (nombre, email, etc.)
+  Future<Map<String, dynamic>> getUserProfile(String userId) async {
+    final url = Uri.parse('$baseUrl/client/profile?user_id=$userId');
+    
+    try {
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        return jsonDecode(utf8.decode(response.bodyBytes));
+      }
+      return {};
+    } catch (e) {
+      print("Error fetching user profile: $e");
+      return {};
+    }
+  }
+
+  /// Obtener lista de chats del usuario
+  Future<List<dynamic>> getUserChats(String userId) async {
+    final url = Uri.parse('$baseUrl/client/chats?user_id=$userId');
+    
+    try {
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        return jsonDecode(utf8.decode(response.bodyBytes));
+      }
+      return [];
+    } catch (e) {
+      print("Error fetching user chats: $e");
+      return [];
+    }
+  }
+
+  /// Crear nueva sesión de chat (para recargar)
+  Future<Map<String, dynamic>> createNewChatSession(String userId) async {
+    final url = Uri.parse('$baseUrl/client/chats/new?user_id=$userId');
+    
+    try {
+      final response = await http.post(url);
+      if (response.statusCode == 200) {
+        return jsonDecode(utf8.decode(response.bodyBytes));
+      }
+      return {};
+    } catch (e) {
+      print("Error creating new chat session: $e");
+      return {};
+    }
+  }
+
+  /// Obtener mensajes de un chat específico
+  Future<Map<String, dynamic>> getChatMessages(String userId, String sessionId) async {
+    final url = Uri.parse('$baseUrl/client/chats/$sessionId/messages?user_id=$userId');
+    
+    try {
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        return jsonDecode(utf8.decode(response.bodyBytes));
+      }
+      return {};
+    } catch (e) {
+      print("Error fetching chat messages: $e");
+      return {};
+    }
+  }
+
+  /// Obtener historial de pedidos pagados
+  Future<List<dynamic>> getUserOrders(String userId) async {
+    final url = Uri.parse('$baseUrl/client/orders?user_id=$userId');
+    
+    try {
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        return jsonDecode(utf8.decode(response.bodyBytes));
+      }
+      return [];
+    } catch (e) {
+      print("Error fetching user orders: $e");
+      return [];
+    }
+  }
+
+  /// Activar un chat específico (marcarlo como actual)
+  Future<Map<String, dynamic>> activateChatSession(String userId, String sessionId) async {
+    final url = Uri.parse('$baseUrl/client/chats/$sessionId/activate?user_id=$userId');
+    
+    try {
+      final response = await http.put(url);
+      if (response.statusCode == 200) {
+        return jsonDecode(utf8.decode(response.bodyBytes));
+      }
+      return {};
+    } catch (e) {
+      print("Error activating chat session: $e");
+      return {};
+    }
+  }
+
+  /// Eliminar un chat específico
+  Future<Map<String, dynamic>> deleteChatSession(String userId, String sessionId) async {
+    final url = Uri.parse('$baseUrl/client/chats/$sessionId?user_id=$userId');
+    
+    try {
+      final response = await http.delete(url);
+      if (response.statusCode == 200) {
+        return jsonDecode(utf8.decode(response.bodyBytes));
+      }
+      return {"deleted": false};
+    } catch (e) {
+      print("Error deleting chat session: $e");
+      return {"deleted": false};
+    }
+  }
+
+  /// Obtener el chat activo actual (o crear uno nuevo si no existe)
+  Future<Map<String, dynamic>> getCurrentChatSession(String userId) async {
+    final url = Uri.parse('$baseUrl/client/chats/current?user_id=$userId');
+    
+    try {
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        return jsonDecode(utf8.decode(response.bodyBytes));
+      }
+      return {};
+    } catch (e) {
+      print("Error getting current chat: $e");
+      return {};
+    }
+  }
+
+  /// Eliminar token FCM al cerrar sesión (evita notificaciones cruzadas)
+  Future<bool> unregisterFcmToken(String userId) async {
+    final url = Uri.parse('$baseUrl/auth/unregister-fcm-token');
+    
+    try {
+      final response = await http.post(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "user_id": userId,
+        }),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      print("Error unregistering FCM token: $e");
+      return false;
     }
   }
 

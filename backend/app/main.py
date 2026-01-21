@@ -41,6 +41,14 @@ app.add_middleware(
 # Conectar rutas
 app.include_router(api_router, prefix=settings.API_V1_STR)
 
+# Notifications Router
+from app.api.endpoints import notifications
+app.include_router(notifications.router, prefix="/api/v1/notifications", tags=["notifications"])
+
+# Client Router (Mis Chats, Historial, Perfil)
+from app.api.endpoints import client
+app.include_router(client.router, prefix="/api/v1/client", tags=["client"])
+
 @app.get("/")
 def root():
     return {"message": "🚀 API Bodega Inteligente está corriendo con Gemini 3"}

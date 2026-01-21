@@ -79,7 +79,7 @@ def normalize_capacity(text: str) -> str:
 # -------------------
 
 from app.models.tables import ChatSession, ChatMessage
-from sqlalchemy import desc
+from sqlalchemy import desc, func
 
 @router.post("/smart", response_model=SmartSearchResponse)
 async def search_smart(request: SearchRequest, db: Session = Depends(get_db)):
@@ -92,19 +92,43 @@ async def search_smart(request: SearchRequest, db: Session = Depends(get_db)):
 
     if request.user_id:
         print(f"👤 [API] ID DE USUARIO RECIBIDO: {request.user_id}")
-        # A. Buscar o crear sesión para el usuario
-        # Estrategia simple: Una sola sesión activa por usuario (o la última).
-        # Para sistemas más complejos, el frontend enviaría session_id.
-        current_session = db.query(ChatSession).filter(ChatSession.user_id == request.user_id).order_by(desc(ChatSession.updated_at)).first()
         
+        # A. ESTRATEGIA DE SESIÓN (STRICT MODE)
+        
+        # 1. Prioridad Máxima: Session ID explícito desde Frontend
+        if request.session_id:
+            current_session = db.query(ChatSession).filter(ChatSession.id == request.session_id).first()
+            if current_session:
+                 print(f"✅ [DB-MEM] Sesión explícita encontrada: {current_session.id}")
+                 # Asegurar flag active
+                 if not current_session.is_active:
+                     current_session.is_active = True
+                     # Desactivar otras para mantener orden
+                     db.query(ChatSession).filter(
+                         ChatSession.user_id == request.user_id, 
+                         ChatSession.id != current_session.id
+                     ).update({"is_active": False})
+                     db.commit()
+
+        # 2. Fallback: ELIMINADO. Si no hay ID explícito, queremos NUEVA sesión siempre.
+        # if not current_session:
+        #    current_session = db.query(ChatSession).filter(...).first()
+
+        # 3. Último recurso: Crear NUEVA (Nunca reactivar viejas al azar)
         if not current_session:
-            print("🆕 [DB-MEM] Creando nueva sesión")
-            current_session = ChatSession(user_id=request.user_id)
+            print("🆕 [DB-MEM] Creando nueva sesión limpia (Sin mezclar historial)")
+            current_session = ChatSession(user_id=request.user_id, is_active=True)
             db.add(current_session)
             db.commit()
             db.refresh(current_session)
-        else:
-            print(f"🔄 [DB-MEM] Sesión existente encontrada: {current_session.id}")
+            
+            # Desactivar otras anteriores por seguridad
+            db.query(ChatSession).filter(
+                 ChatSession.user_id == request.user_id, 
+                 ChatSession.id != current_session.id
+            ).update({"is_active": False})
+            db.commit()
+
         
         # B. Guardar mensaje del Usuario
         user_msg = ChatMessage(
@@ -113,43 +137,162 @@ async def search_smart(request: SearchRequest, db: Session = Depends(get_db)):
             content=request.query
         )
         db.add(user_msg)
-        db.commit()
-
-        # C. Reconstruir historial desde la BD (Solo para logs, ya no se envía a Gemini)
-        db_messages = db.query(ChatMessage).filter(
-            ChatMessage.session_id == current_session.id
-        ).order_by(ChatMessage.created_at.asc()).all()
         
-        print(f"📜 [DB-MEM] Mensajes recuperados de la BD: {len(db_messages)}")
+        # Actualizar timestamp de la sesión
+        current_session.updated_at = func.now()
+        db.commit() # Commit inicial para asegurar que el mensaje está guardado
 
-        # D. Usar el ESTADO PERSISTENTE de búsqueda
+        # C. Recuperar estado de búsqueda persistente
         search_state = current_session.search_state or []
     else:
         search_state = []
 
-    # --- 2. INTELIGENCIA (Usando el ESTADO PERSISTENTE) ---
-    print(f"🤖 [DEBUG] Estado previo: {search_state}")
+    # --- 2. CLASIFICACIÓN DE INTENCIÓN ---
+    intent_data = await gemini_client.classify_intent(request.query)
+    intent_type = intent_data.get("intent", "UNKNOWN")
+    requires_search = intent_data.get("requires_search", True)
+    requires_state = intent_data.get("requires_state", False)
+    clear_state = intent_data.get("clear_state", False)
     
-    # Gemini recibe el query y el estado actual, y devuelve el estado actualizado
-    updated_state = await gemini_client.interpret_search_intent(request.query, search_state)
-    intent_items = updated_state
+    is_inappropriate = intent_data.get("is_inappropriate", False)
     
-    # Persistir el nuevo estado si hay sesión
-    if current_session:
-        current_session.search_state = updated_state
-        db.commit()
+    print(f"🎯 [INTENT] Tipo: {intent_type}, Buscar: {requires_search}, Estado: {requires_state}, Limpiar: {clear_state}, Inapropiado: {is_inappropriate}")
     
-    print(f"🤖 [DEBUG] Nuevo Estado Resultante: {updated_state}")
-    # ... (Resto de la lógica sigue igual)
+    # --- 3. MANEJO SEGÚN TIPO DE INTENCIÓN ---
+    
+    # CASO 0: Contenido inapropiado - Rechazar sin llamar a Gemini (ahorra API)
+    if intent_type == "INAPPROPRIATE" or is_inappropriate:
+        # Mensaje fijo para no gastar API
+        bot_message = "⚠️ Lo siento, pero solo puedo ayudarte con pedidos de productos de bodega. ¿Qué te gustaría pedir hoy?"
+        
+        # Guardar advertencia pero NO respuesta elaborada
+        if current_session:
+            bot_msg_db = ChatMessage(session_id=current_session.id, role="assistant", content=bot_message)
+            db.add(bot_msg_db)
+            db.commit()
+        
+        return SmartSearchResponse(
+            message=bot_message, 
+            results=[],
+            session_id=current_session.id if current_session else None
+        )
+    
+    # CASO A: Saludos y Despedidas - Solo responder, NO buscar productos
+    if intent_type in ["GREETING", "FAREWELL"]:
+        bot_message = await gemini_client.generate_conversational_response(request.query, intent_type)
+        
+        # Guardar respuesta del bot
+        if current_session:
+            bot_msg_db = ChatMessage(session_id=current_session.id, role="assistant", content=bot_message)
+            db.add(bot_msg_db)
+            db.commit()
+        
+        return SmartSearchResponse(
+            message=bot_message, 
+            results=[],
+            session_id=current_session.id if current_session else None
+        )
+    
+    # CASO B: Limpiar carrito
+    if intent_type == "CLEAR_CART" or clear_state:
+        if current_session:
+            current_session.search_state = []
+            db.commit()
+        
+        bot_message = await gemini_client.generate_conversational_response(request.query, "CLEAR_CART")
+        
+        if current_session:
+            bot_msg_db = ChatMessage(session_id=current_session.id, role="assistant", content=bot_message)
+            db.add(bot_msg_db)
+            db.commit()
+        
+        return SmartSearchResponse(
+            message=bot_message, 
+            results=[],
+            session_id=current_session.id if current_session else None
+        )
+    
+    # CASO C: Recordar pedido anterior - Solo mostrar el estado guardado
+    if intent_type == "RECALL_PREVIOUS":
+        if search_state:
+            products_str = ", ".join([f"{p.get('quantity', 1)}x {p.get('product_name', 'producto')}" for p in search_state])
+            context = f"Pedido guardado: {products_str}"
+        else:
+            context = "No hay pedido guardado"
+        
+        bot_message = await gemini_client.generate_conversational_response(request.query, "RECALL_PREVIOUS", context)
+        
+        if current_session:
+            bot_msg_db = ChatMessage(session_id=current_session.id, role="assistant", content=bot_message)
+            db.add(bot_msg_db)
+            db.commit()
+        
+        # Si hay estado, hacer búsqueda con esos productos
+        if search_state:
+            # Continuar con la búsqueda usando el estado guardado
+            intent_items = search_state
+        else:
+            return SmartSearchResponse(
+                message=bot_message, 
+                results=[],
+                session_id=current_session.id if current_session else None
+            )
+    
+    # CASO D: Confirmación simple
+    elif intent_type == "CONFIRMATION":
+        if search_state:
+            # Continuar con el pedido actual
+            intent_items = search_state
+            context = f"Confirmando pedido con {len(search_state)} productos"
+        else:
+            bot_message = await gemini_client.generate_conversational_response(request.query, "CONFIRMATION", "No hay pedido pendiente")
+            
+            if current_session:
+                bot_msg_db = ChatMessage(session_id=current_session.id, role="assistant", content=bot_message)
+                db.add(bot_msg_db)
+                db.commit()
+            
+            return SmartSearchResponse(
+                message=bot_message, 
+                results=[],
+                session_id=current_session.id if current_session else None
+            )
+    
+    # CASO E: Búsqueda, Agregar, Modificar, Pregunta - Requieren procesamiento
+    else:
+        # Determinar si usamos el estado anterior
+        state_to_use = search_state if requires_state else []
+        
+        # Llamar a interpret_search_intent con el tipo de intención
+        updated_state = await gemini_client.interpret_search_intent(
+            request.query, 
+            state_to_use, 
+            intent_type
+        )
+        intent_items = updated_state
+        
+        # Persistir el nuevo estado si hay sesión (pero NO para QUESTION)
+        if current_session and intent_type != "QUESTION":
+            current_session.search_state = updated_state
+            db.commit()
+        
+        print(f"🤖 [DEBUG] Estado anterior: {search_state}")
+        print(f"🤖 [DEBUG] Nuevo estado: {updated_state}")
 
-    # Los intent_items ya vienen del paso 2 (updated_state)
-    
-    # Extraemos keywords
+    # --- 4. VERIFICAR SI HAY PRODUCTOS PARA BUSCAR ---
     keywords = [item.get("product_name", "") for item in intent_items]
-    print(f"🤖 [DEBUG] Keywords base: {keywords}")
+    keywords = [k for k in keywords if k]  # Filtrar vacíos
+    print(f"🤖 [DEBUG] Keywords para buscar: {keywords}")
 
     if not keywords:
-        msg = await gemini_client.generate_shopkeeper_response(request.query, "Sin intención clara.")
+        # No hay productos que buscar - responder de forma conversacional
+        msg = await gemini_client.generate_shopkeeper_response(request.query, "Sin intención clara de producto.")
+        
+        if current_session:
+            bot_msg_db = ChatMessage(session_id=current_session.id, role="assistant", content=msg)
+            db.add(bot_msg_db)
+            db.commit()
+        
         return SmartSearchResponse(message=msg, results=[])
 
     # 2. Buscar en BD
@@ -377,15 +520,58 @@ async def search_smart(request: SearchRequest, db: Session = Depends(get_db)):
     
     # --- PROCESO DE GUARDADO DE RESPUESTA DEL BOT ---
     if current_session:
+        # Serializar resultados para persistencia (Recomendaciones en historial)
+        attachment_json = None
+        if response_list:
+            try:
+                # Usar jsonable_encoder para manejar UUIDs, Datetimes, etc. de forma segura
+                from fastapi.encoders import jsonable_encoder
+                attachment_json = jsonable_encoder(response_list)
+                print(f"💾 [DB] Guardando {len(attachment_json)} tarjetas de productos en historial.")
+            except Exception as e:
+                print(f"⚠️ Error serializando attachment: {e}")
+
         bot_msg_db = ChatMessage(
             session_id=current_session.id,
             role="assistant",
-            content=bot_message
+            content=bot_message,
+            attachment_data=attachment_json # <--- NUEVO: Persistencia de tarjetas
         )
         db.add(bot_msg_db)
+        
+        # --- ACTUALIZAR TÍTULO DEL CHAT (Mejora UX) ---
+        new_title = None
+        
+        # 1. Si hay productos identificados (intención de compra)
+        if keywords:
+            products_str = ", ".join(keywords[:2]).title()
+            if len(keywords) > 2:
+                products_str += "..."
+            new_title = f"🛒 {products_str}"
+            
+        # 2. Si es una intención específica y no tiene título de producto
+        elif not current_session.title or "Chat" in current_session.title:
+            if intent_type == "GREETING":
+                new_title = "👋 Saludo"
+            elif intent_type == "QUESTION":
+                new_title = "❓ Consulta"
+            elif intent_type == "CLEAR_CART":
+                new_title = "🗑️ Limpiando carrito"
+        
+        # Aplicar cambio si hay nuevo título
+        if new_title:
+            # Si el nuevo título es de productos, sobrescribe cualquier cosa anterior (incluso saludos)
+            if "🛒" in new_title:
+                current_session.title = new_title
+            # Si es otro tipo, solo si no tiene título ya definido
+            elif not current_session.title or "Chat" in current_session.title:
+                current_session.title = new_title
+        
+        current_session.updated_at = func.now()
         db.commit()
 
     return SmartSearchResponse(
         message=bot_message,
-        results=response_list
+        results=response_list,
+        session_id=current_session.id if current_session else None
     )

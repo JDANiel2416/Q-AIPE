@@ -88,6 +88,62 @@ class _EditProductScreenState extends State<EditProductScreen> {
     }
   }
 
+  void _confirmDelete() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1F2E),
+        title: const Text("Eliminar Producto", style: TextStyle(color: Colors.white)),
+        content: Text(
+          "¿Estás seguro de eliminar '${widget.product['name']}'? Esta acción eliminará el producto permanentemente y no se puede deshacer.",
+          style: const TextStyle(color: Colors.white70)
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("Cancelar", style: TextStyle(color: Colors.grey)),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(ctx); // Cerrar dialog
+              await _deleteProduct();
+            },
+            child: const Text("Eliminar", style: TextStyle(color: Colors.redAccent)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _deleteProduct() async {
+    setState(() => _isLoading = true);
+    
+    final userId = await SessionService().getUserId();
+    if (userId == null) return;
+
+    // Convert product_id to int
+    final productId = (widget.product['product_id'] is int) 
+        ? widget.product['product_id'] as int
+        : (widget.product['product_id'] as num).toInt();
+
+    final success = await _api.deleteProduct(userId, productId);
+    
+    setState(() => _isLoading = false);
+
+    if (mounted) {
+      if (success) {
+         ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Producto eliminado permanentemente"), backgroundColor: Colors.green)
+        );
+        Navigator.pop(context, true); // Return true so list reloads
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("No se pudo eliminar el producto"), backgroundColor: Colors.red)
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -314,6 +370,34 @@ class _EditProductScreenState extends State<EditProductScreen> {
                                     ),
                             ),
                           ),
+
+                          const SizedBox(height: 20),
+                          
+                          // Delete Button
+                          SizedBox(
+                            width: double.infinity,
+                            height: 56,
+                            child: ElevatedButton(
+                              onPressed: _isLoading ? null : _confirmDelete,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.redAccent.withOpacity(0.1),
+                                foregroundColor: Colors.redAccent,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                  side: const BorderSide(color: Colors.redAccent)
+                                ),
+                                elevation: 0,
+                              ),
+                              child: const Text(
+                                      "Eliminar Producto",
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                            ),
+                          ),
+                          const SizedBox(height: 40),
                         ],
                       ),
                     ),

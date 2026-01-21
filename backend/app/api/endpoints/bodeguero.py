@@ -1,5 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy import func, extract
+from datetime import datetime, timedelta
 from app.db.session import get_db
 from app.models.tables import User, Bodega, StoreInventory, MasterProduct
 from app.schemas.api_schemas import ProductCreateRequest
@@ -173,7 +175,15 @@ def update_product_by_id(
     # 3. Actualizar precio y SUMAR al stock
     existing_inv.price = update_data.price
     existing_inv.stock_quantity += update_data.stock_to_add  # SUMA en lugar de reemplazar
-    existing_inv.is_available = True
+    
+    # AUTOMATION: Reactivar si hay stock positivo
+    if existing_inv.stock_quantity > 0:
+        existing_inv.is_available = True
+    elif existing_inv.stock_quantity <= 0:
+        # Por seguridad, si restan y baja a 0
+        existing_inv.stock_quantity = 0
+        existing_inv.is_available = False
+
     db.commit()
 
     return {
@@ -358,6 +368,34 @@ def get_orders(user_id: str, db: Session = Depends(get_db)):
 
     return result
 
+# NUEVO: Obtener un pedido específico por ID (para navegación desde notificaciones)
+@router.get("/orders/{order_id}")
+def get_order_by_id(order_id: str, db: Session = Depends(get_db)):
+    order = db.query(Reservation).filter(Reservation.id == order_id).first()
+    
+    if not order:
+        raise HTTPException(status_code=404, detail="Pedido no encontrado")
+    
+    # Serializar items
+    items_data = [
+        {
+            "product_name": item.product_name,
+            "quantity": item.quantity,
+            "unit_price": float(item.unit_price),
+            "total_price": float(item.total_price)
+        }
+        for item in order.items
+    ]
+    
+    return {
+        "id": str(order.id),
+        "created_at": order.created_at.isoformat(),
+        "client_name": order.user.full_name if order.user else "Cliente Anónimo",
+        "total_amount": float(order.total_amount),
+        "status": order.status,
+        "items": items_data
+    }
+
 class OrderStatusUpdate(BaseModel):
     status: str # PAID, CREDIT, CANCELLED
 
@@ -375,3 +413,160 @@ def update_order_status(
     db.commit()
     
     return {"success": True, "message": f"Pedido actualizado a {status_data.status}"}
+
+@router.delete("/delete-product")
+def delete_product(user_id: str, product_id: int, db: Session = Depends(get_db)):
+    # 1. Validar Bodega
+    bodega = db.query(Bodega).filter(Bodega.owner_id == user_id).first()
+    if not bodega:
+        raise HTTPException(status_code=404, detail="Bodega no encontrada")
+
+    # 2. Buscar el item en el inventario
+    item = db.query(StoreInventory).filter(
+        StoreInventory.bodega_id == bodega.id,
+        StoreInventory.product_id == product_id
+    ).first()
+
+    if not item:
+        raise HTTPException(status_code=404, detail="Producto no encontrado en tu tienda")
+
+    # 3. Eliminar del inventario
+    db.delete(item)
+    db.flush() # Para que el cambio se refleje antes de consultar
+
+    # 4. Verificar si el MasterProduct sigue siendo usado por ALGUIEN
+    # (Si nadie más lo tiene, lo borramos para no llenar basura)
+    is_used_elsewhere = db.query(StoreInventory).filter(
+        StoreInventory.product_id == product_id
+    ).first()
+
+    if not is_used_elsewhere:
+        # Nadie más lo usa, borrar del maestro
+        master_prod = db.query(MasterProduct).filter(MasterProduct.id == product_id).first()
+        if master_prod:
+            db.delete(master_prod)
+
+    db.commit()
+    
+    return {"success": True, "message": "Producto eliminado permanentemente"}
+
+# NUEVO: Estadísticas del Dashboard
+@router.get("/dashboard-stats")
+def get_dashboard_stats(user_id: str, db: Session = Depends(get_db)):
+    """
+    Obtiene estadísticas reales para el panel de control del bodeguero:
+    - Ganancias del día
+    - Cantidad de pedidos del día
+    - Pedidos activos (PENDING)
+    - Ventas mensuales del año
+    - Producto más vendido
+    - Producto menos vendido
+    """
+    # 1. Buscar bodega del usuario
+    bodega = db.query(Bodega).filter(Bodega.owner_id == user_id).first()
+    if not bodega:
+        raise HTTPException(status_code=404, detail="Bodega no encontrada")
+
+    # 2. Fecha actual (inicio y fin del día)
+    today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    today_end = today_start + timedelta(days=1)
+
+    # 3. Ganancias del día (solo pedidos PAID/COMPLETED)
+    earnings_today = db.query(func.coalesce(func.sum(Reservation.total_amount), 0)).filter(
+        Reservation.bodega_id == bodega.id,
+        Reservation.status.in_(["PAID", "COMPLETED"]),
+        Reservation.created_at >= today_start,
+        Reservation.created_at < today_end
+    ).scalar()
+
+    # 4. Cantidad de pedidos del día (todos los estados)
+    orders_today = db.query(func.count(Reservation.id)).filter(
+        Reservation.bodega_id == bodega.id,
+        Reservation.created_at >= today_start,
+        Reservation.created_at < today_end
+    ).scalar()
+
+    # 5. Pedidos activos (PENDING) con detalles
+    pending_orders = db.query(Reservation).filter(
+        Reservation.bodega_id == bodega.id,
+        Reservation.status == "PENDING"
+    ).order_by(Reservation.created_at.desc()).limit(10).all()
+
+    pending_orders_data = []
+    for order in pending_orders:
+        items_summary = ", ".join([
+            f"{item.quantity}x {item.product_name}" 
+            for item in order.items[:3]  # Máximo 3 items en resumen
+        ])
+        if len(order.items) > 3:
+            items_summary += f" (+{len(order.items) - 3} más)"
+        
+        # Calcular tiempo relativo
+        time_diff = datetime.now() - order.created_at
+        if time_diff.days > 0:
+            time_ago = f"Hace {time_diff.days} día(s)"
+        elif time_diff.seconds >= 3600:
+            hours = time_diff.seconds // 3600
+            time_ago = f"Hace {hours} hora(s)"
+        else:
+            minutes = max(1, time_diff.seconds // 60)
+            time_ago = f"Hace {minutes} min"
+        
+        pending_orders_data.append({
+            "id": str(order.id),
+            "client_name": order.user.full_name if order.user else "Cliente Anónimo",
+            "items_summary": items_summary,
+            "total_amount": float(order.total_amount),
+            "time_ago": time_ago,
+            "created_at": order.created_at.isoformat(),
+            "status": order.status,
+            "items": [
+                {
+                    "product_name": item.product_name,
+                    "quantity": item.quantity,
+                    "unit_price": float(item.unit_price),
+                    "total_price": float(item.total_price)
+                }
+                for item in order.items
+            ]
+        })
+
+    # 6. Ventas mensuales del año actual
+    current_year = datetime.now().year
+    monthly_sales = []
+    for month in range(1, 13):
+        month_total = db.query(func.coalesce(func.sum(Reservation.total_amount), 0)).filter(
+            Reservation.bodega_id == bodega.id,
+            Reservation.status.in_(["PAID", "COMPLETED"]),
+            extract('year', Reservation.created_at) == current_year,
+            extract('month', Reservation.created_at) == month
+        ).scalar()
+        monthly_sales.append({
+            "month": month,
+            "total": float(month_total) if month_total else 0.0
+        })
+
+    # 7. Productos más y menos vendidos (basado en ReservationItem)
+    product_sales = db.query(
+        ReservationItem.product_name,
+        func.sum(ReservationItem.quantity).label('total_qty')
+    ).join(Reservation).filter(
+        Reservation.bodega_id == bodega.id,
+        Reservation.status.in_(["PAID", "COMPLETED"])
+    ).group_by(ReservationItem.product_name).order_by(
+        func.sum(ReservationItem.quantity).desc()
+    ).all()
+
+    best_selling = product_sales[0].product_name if product_sales else None
+    least_selling = product_sales[-1].product_name if len(product_sales) > 1 else None
+
+    return {
+        "earnings_today": float(earnings_today) if earnings_today else 0.0,
+        "orders_today": orders_today or 0,
+        "pending_orders_count": len(pending_orders_data),
+        "pending_orders": pending_orders_data,
+        "monthly_sales": monthly_sales,
+        "best_selling_product": best_selling,
+        "least_selling_product": least_selling,
+        "current_year": current_year
+    }

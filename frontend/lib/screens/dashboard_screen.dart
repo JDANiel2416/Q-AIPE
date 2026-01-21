@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'dart:async';
 import '../services/session_service.dart';
 import '../services/api_service.dart';
+import '../services/push_notification_service.dart'; // NUEVO: Para eventos en tiempo real
 import 'login_screen.dart';
 import 'product_management_screen.dart';
 import 'profile_screen.dart';
 import 'orders_screen.dart';
+import 'order_detail_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({Key? key}) : super(key: key);
@@ -18,28 +21,146 @@ class _DashboardScreenState extends State<DashboardScreen> {
   final ApiService _api = ApiService();
   bool _showProfileMenu = false;
   bool _showNotifications = false;
-  final int _pendingOrders = 3; // Static for now
+  bool _isLoading = true;
   String _bodegaName = "Cargando...";
+  
+  // Estadísticas dinámicas
+  double _earningsToday = 0.0;
+  int _ordersToday = 0;
+  int _pendingOrdersCount = 0;
+  List<Map<String, dynamic>> _pendingOrders = [];
+  List<Map<String, dynamic>> _monthlySales = [];
+  String? _bestSellingProduct;
+  String? _leastSellingProduct;
+  int _currentYear = DateTime.now().year;
+  
+  // NUEVO: Subscription para eventos de push
+  StreamSubscription<Map<String, dynamic>>? _orderEventSubscription;
 
   @override
   void initState() {
     super.initState();
-    _loadBodegaName();
+    _loadDashboardData();
+    
+    // NUEVO: Escuchar eventos de nuevos pedidos en tiempo real
+    _orderEventSubscription = PushNotificationService().onOrderEvent.listen((event) {
+      final eventType = event['type'];
+      
+      // Actualizar dashboard cuando llega un nuevo pedido (solo refresh, no navegar)
+      if (eventType == 'NEW_ORDER') {
+        print('📦 [Dashboard] Nuevo pedido detectado, actualizando...');
+        if (mounted) {
+          _loadDashboardData();
+        }
+      }
+      
+      // Navegar al detalle cuando el usuario toca la notificación
+      if (eventType == 'NAVIGATE_TO_ORDER') {
+        final reservationId = event['reservation_id'];
+        if (reservationId != null && mounted) {
+          print('🧭 [Dashboard] Obteniendo datos del pedido: $reservationId');
+          _navigateToOrderDetail(reservationId);
+        }
+      }
+    });
+    
+    // NUEVO: Verificar si hay una navegación pendiente (app se abrió desde notificación)
+    _checkPendingNavigation();
+  }
+  
+  /// Verificar y procesar navegación pendiente desde notificaciones
+  Future<void> _checkPendingNavigation() async {
+    // Esperar un frame para asegurar que el widget está completamente montado
+    await Future.delayed(const Duration(milliseconds: 100));
+    
+    final pendingOrderId = PushNotificationService().pendingOrderId;
+    if (pendingOrderId != null && mounted) {
+      print('🔔 [Dashboard] Procesando navegación pendiente: $pendingOrderId');
+      PushNotificationService().clearPendingNavigation();
+      _navigateToOrderDetail(pendingOrderId);
+    }
+  }
+  
+  /// Navegar al detalle del pedido obteniendo primero los datos completos
+  Future<void> _navigateToOrderDetail(String orderId) async {
+    try {
+      final orderData = await _api.getOrderById(orderId);
+      if (orderData.isNotEmpty && mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => OrderDetailScreen(order: orderData),
+          ),
+        );
+      } else {
+        print('⚠️ No se encontró el pedido, navegando a OrdersScreen');
+        if (mounted) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const OrdersScreen()),
+          );
+        }
+      }
+    } catch (e) {
+      print('❌ Error obteniendo pedido: $e');
+      // Fallback a OrdersScreen si hay error
+      if (mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const OrdersScreen()),
+        );
+      }
+    }
   }
 
-  Future<void> _loadBodegaName() async {
+  @override
+  void dispose() {
+    _orderEventSubscription?.cancel(); // Limpiar subscription
+    super.dispose();
+  }
+
+  Future<void> _loadDashboardData() async {
     try {
       final userId = await SessionService().getUserId();
       if (userId != null) {
-        final data = await _api.getMyInventory(userId);
-        if (mounted && data is Map && data['bodega_name'] != null) {
+        // Cargar nombre de bodega y estadísticas en paralelo
+        final results = await Future.wait([
+          _api.getMyInventory(userId),
+          _api.getDashboardStats(userId),
+        ]);
+        
+        final inventoryData = results[0];
+        final statsData = results[1] as Map<String, dynamic>;
+        
+        if (mounted) {
           setState(() {
-            _bodegaName = data['bodega_name'];
+            // Nombre de bodega
+            if (inventoryData is Map && inventoryData['bodega_name'] != null) {
+              _bodegaName = inventoryData['bodega_name'];
+            }
+            
+            // Estadísticas del día
+            _earningsToday = (statsData['earnings_today'] ?? 0.0).toDouble();
+            _ordersToday = statsData['orders_today'] ?? 0;
+            _pendingOrdersCount = statsData['pending_orders_count'] ?? 0;
+            _pendingOrders = List<Map<String, dynamic>>.from(
+              statsData['pending_orders'] ?? []
+            );
+            _monthlySales = List<Map<String, dynamic>>.from(
+              statsData['monthly_sales'] ?? []
+            );
+            _bestSellingProduct = statsData['best_selling_product'];
+            _leastSellingProduct = statsData['least_selling_product'];
+            _currentYear = statsData['current_year'] ?? DateTime.now().year;
+            _isLoading = false;
           });
         }
       }
     } catch (e) {
-      print('Error loading bodega name: $e');
+      print('Error loading dashboard data: $e');
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -176,31 +297,31 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     size: 24,
                   ),
                 ),
-                if (_pendingOrders > 0)
-                  Positioned(
-                    right: 6,
-                    top: 6,
-                    child: Container(
-                      padding: const EdgeInsets.all(4),
-                      decoration: const BoxDecoration(
-                        color: Colors.red,
-                        shape: BoxShape.circle,
-                      ),
-                      constraints: const BoxConstraints(
-                        minWidth: 16,
-                        minHeight: 16,
-                      ),
-                      child: Text(
-                        '$_pendingOrders',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
+                    if (_pendingOrdersCount > 0)
+                      Positioned(
+                        right: 6,
+                        top: 6,
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: const BoxDecoration(
+                            color: Colors.red,
+                            shape: BoxShape.circle,
+                          ),
+                          constraints: const BoxConstraints(
+                            minWidth: 16,
+                            minHeight: 16,
+                          ),
+                          child: Text(
+                            '$_pendingOrdersCount',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
                         ),
-                        textAlign: TextAlign.center,
                       ),
-                    ),
-                  ),
               ],
             ),
           ),
@@ -215,7 +336,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         Expanded(
           child: _buildAnalyticsCard(
             "Ganancias Hoy",
-            "S/ 156.50",
+            _isLoading ? "..." : "S/ ${_earningsToday.toStringAsFixed(2)}",
             Icons.attach_money,
             Colors.green,
           ),
@@ -223,8 +344,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         const SizedBox(width: 12),
         Expanded(
           child: _buildAnalyticsCard(
-            "Pedidos",
-            "12",
+            "Pedidos Hoy",
+            _isLoading ? "..." : "$_ordersToday",
             Icons.shopping_bag,
             Colors.blue,
           ),
@@ -288,6 +409,29 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildSalesChart() {
+    // Generar spots dinámicos desde _monthlySales
+    final List<FlSpot> spots = [];
+    double maxValue = 100.0; // Mínimo para el eje Y
+    
+    for (int i = 0; i < _monthlySales.length && i < 12; i++) {
+      final total = (_monthlySales[i]['total'] ?? 0.0).toDouble();
+      spots.add(FlSpot(i.toDouble(), total));
+      if (total > maxValue) maxValue = total;
+    }
+    
+    // Si no hay datos, usar spots vacíos
+    if (spots.isEmpty) {
+      for (int i = 0; i < 12; i++) {
+        spots.add(FlSpot(i.toDouble(), 0));
+      }
+    }
+    
+    // Redondear maxY al siguiente múltiplo de 100
+    final maxY = ((maxValue / 100).ceil() * 100).toDouble();
+    final interval = maxY > 0 ? (maxY / 4) : 100.0;
+    
+    const months = ['E', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'];
+    
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -315,9 +459,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   color: Colors.white.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Text(
-                  "2024",
-                  style: TextStyle(color: Colors.white70, fontSize: 12),
+                child: Text(
+                  "$_currentYear",
+                  style: const TextStyle(color: Colors.white70, fontSize: 12),
                 ),
               ),
             ],
@@ -330,7 +474,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 gridData: FlGridData(
                   show: true,
                   drawVerticalLine: false,
-                  horizontalInterval: 100,
+                  horizontalInterval: interval,
                   getDrawingHorizontalLine: (value) {
                     return FlLine(
                       color: Colors.white.withOpacity(0.1),
@@ -348,12 +492,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       reservedSize: 30,
                       interval: 1,
                       getTitlesWidget: (value, meta) {
-                        const months = ['E', 'F', 'M', 'A', 'M', 'J'];
-                        if (value.toInt() >= 0 && value.toInt() < months.length) {
+                        final idx = value.toInt();
+                        if (idx >= 0 && idx < months.length) {
                           return Padding(
                             padding: const EdgeInsets.only(top: 8),
                             child: Text(
-                              months[value.toInt()],
+                              months[idx],
                               style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 12),
                             ),
                           );
@@ -365,8 +509,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   leftTitles: AxisTitles(
                     sideTitles: SideTitles(
                       showTitles: true,
-                      interval: 100,
-                      reservedSize: 40,
+                      interval: interval,
+                      reservedSize: 50,
                       getTitlesWidget: (value, meta) {
                         return Text(
                           'S/${value.toInt()}',
@@ -378,19 +522,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
                 borderData: FlBorderData(show: false),
                 minX: 0,
-                maxX: 5,
+                maxX: 11,
                 minY: 0,
-                maxY: 400,
+                maxY: maxY,
                 lineBarsData: [
                   LineChartBarData(
-                    spots: const [
-                      FlSpot(0, 150),
-                      FlSpot(1, 200),
-                      FlSpot(2, 180),
-                      FlSpot(3, 280),
-                      FlSpot(4, 320),
-                      FlSpot(5, 290),
-                    ],
+                    spots: spots,
                     isCurved: true,
                     gradient: LinearGradient(
                       colors: [
@@ -421,8 +558,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
-              _buildProductTag("Más vendido", "Inca Kola 1.5L", Colors.green),
-              _buildProductTag("Menos vendido", "Detergente Ace", Colors.orange),
+              _buildProductTag(
+                "Más vendido", 
+                _bestSellingProduct ?? "Sin datos", 
+                Colors.green
+              ),
+              _buildProductTag(
+                "Menos vendido", 
+                _leastSellingProduct ?? "Sin datos", 
+                Colors.orange
+              ),
             ],
           ),
         ],
@@ -555,15 +700,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         );
                         // Reload bodega name if changed
                         if (result == true) {
-                          _loadBodegaName();
+                          _loadDashboardData();
                         }
                       }),
-                      _buildMenuItem(Icons.receipt_long, "Pedidos recientes", true, onTap: () {
+                      _buildMenuItem(Icons.receipt_long, "Pedidos recientes", true, onTap: () async {
                         setState(() => _showProfileMenu = false);
-                        Navigator.push(
+                        await Navigator.push(
                           context,
                           MaterialPageRoute(builder: (_) => const OrdersScreen()),
                         );
+                        // Refrescar al volver, por si cambió el estado de algún pedido
+                        _loadDashboardData();
                       }),
                       _buildMenuItem(Icons.edit, "Editar productos", false),
                       _buildMenuItem(Icons.local_offer, "Crear ofertas", false),
@@ -658,7 +805,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 borderRadius: BorderRadius.circular(8),
                               ),
                               child: Text(
-                                '$_pendingOrders',
+                                '$_pendingOrdersCount',
                                 style: const TextStyle(
                                   color: Colors.white,
                                   fontSize: 12,
@@ -670,24 +817,30 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         ),
                       ),
                       const Divider(color: Colors.white10, height: 1),
-                      _buildNotificationItem(
-                        "Juan P.",
-                        "2x Arroz Paisana, 1x Aceite Primor",
-                        "S/ 12.50",
-                        "Hace 5 min",
-                      ),
-                      _buildNotificationItem(
-                        "María G.",
-                        "1x Inca Kola 2L, 3x Galletas Soda",
-                        "S/ 18.00",
-                        "Hace 15 min",
-                      ),
-                      _buildNotificationItem(
-                        "Carlos R.",
-                        "1x Detergente Ace, 2x Papel Higiénico",
-                        "S/ 24.50",
-                        "Hace 1 hora",
-                      ),
+                      // Mostrar pedidos reales o mensaje vacío
+                      if (_pendingOrders.isEmpty)
+                        Padding(
+                          padding: const EdgeInsets.all(20),
+                          child: Center(
+                            child: Text(
+                              "No hay pedidos activos",
+                              style: TextStyle(
+                                color: Colors.white.withOpacity(0.5),
+                                fontSize: 14,
+                              ),
+                            ),
+                          ),
+                        )
+                      else
+                        // FIX: Usar Flexible + ListView para evitar overflow en pantallas pequeñas
+                        Flexible(
+                          child: ListView.builder(
+                            shrinkWrap: true,
+                            padding: EdgeInsets.zero,
+                            itemCount: _pendingOrders.length,
+                            itemBuilder: (context, index) => _buildNotificationItem(_pendingOrders[index]),
+                          ),
+                        ),
                     ],
                   ),
                 ),
@@ -699,57 +852,75 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildNotificationItem(String name, String products, String total, String time) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        border: Border(
-          bottom: BorderSide(color: Colors.white.withOpacity(0.05)),
+  Widget _buildNotificationItem(Map<String, dynamic> order) {
+    final name = order['client_name'] ?? "Cliente";
+    final products = order['items_summary'] ?? "";
+    final total = "S/ ${(order['total_amount'] ?? 0.0).toStringAsFixed(2)}";
+    final time = order['time_ago'] ?? "";
+    
+    return InkWell(
+      onTap: () async {
+        setState(() => _showNotifications = false);
+        final result = await Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => OrderDetailScreen(order: order)),
+        );
+        // Recargar datos si se actualizó el pedido
+        if (result == true) {
+          _loadDashboardData();
+        }
+      },
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          border: Border(
+            bottom: BorderSide(color: Colors.white.withOpacity(0.05)),
+          ),
         ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                name,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  name,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
-              ),
-              Text(
-                total,
-                style: const TextStyle(
-                  color: Color(0xFF00D9FF),
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
+                Text(
+                  total,
+                  style: const TextStyle(
+                    color: Color(0xFF00D9FF),
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              products,
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.6),
+                fontSize: 12,
               ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text(
-            products,
-            style: TextStyle(
-              color: Colors.white.withOpacity(0.6),
-              fontSize: 12,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
             ),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
-          const SizedBox(height: 4),
-          Text(
-            time,
-            style: TextStyle(
-              color: Colors.white.withOpacity(0.4),
-              fontSize: 10,
+            const SizedBox(height: 4),
+            Text(
+              time,
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.4),
+                fontSize: 10,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

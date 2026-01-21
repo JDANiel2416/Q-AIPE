@@ -80,8 +80,9 @@ class BodegaSearchResult {
 class SmartSearchResponse {
   final String message;
   final List<BodegaSearchResult> results;
+  final String? sessionId; // <--- NUEVO: ID de sesión
 
-  SmartSearchResponse({required this.message, required this.results});
+  SmartSearchResponse({required this.message, required this.results, this.sessionId});
 
   factory SmartSearchResponse.fromJson(Map<String, dynamic> json) {
     return SmartSearchResponse(
@@ -89,6 +90,7 @@ class SmartSearchResponse {
       results: (json['results'] as List?)
           ?.map((i) => BodegaSearchResult.fromJson(i))
           .toList() ?? [],
+      sessionId: json['session_id'], // <--- Lectura del backend
     );
   }
 }

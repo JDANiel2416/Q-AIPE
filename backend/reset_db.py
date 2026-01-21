@@ -8,6 +8,48 @@ sys.path.append(os.getcwd())
 from app.db.session import SessionLocal, engine
 from app.models.tables import Base, User, Bodega, MasterProduct, StoreInventory
 
+def migrate_database():
+    """
+    Ejecutar migraciones (agregar columnas nuevas) SIN borrar datos existentes.
+    Usar cuando solo quieres actualizar la estructura de tablas.
+    """
+    print("🔄 EJECUTANDO MIGRACIONES...")
+    
+    with engine.connect() as connection:
+        # --- USUARIOS ---
+        print("   - Migrando tabla 'users'...")
+        try:
+            connection.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS fcm_token VARCHAR"))
+            print("     ✅ Columna 'fcm_token' verificada")
+        except Exception as e:
+            print(f"     ⚠️ fcm_token: {e}")
+        
+        # --- CHAT SESSIONS ---
+        print("   - Migrando tabla 'chat_sessions'...")
+        try:
+            connection.execute(text("ALTER TABLE chat_sessions ADD COLUMN IF NOT EXISTS title VARCHAR"))
+            print("     ✅ Columna 'title' verificada")
+        except Exception as e:
+            print(f"     ⚠️ title: {e}")
+        
+        try:
+            connection.execute(text("ALTER TABLE chat_sessions ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE"))
+            print("     ✅ Columna 'is_active' verificada")
+        except Exception as e:
+            print(f"     ⚠️ is_active: {e}")
+        
+        # 3. Campos nuevos para chat mejorado (Persistencia de tarjetas)
+        print("   - Migrando tabla 'chat_messages'...")
+        try:
+            connection.execute(text("ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS attachment_data JSONB"))
+            print("     ✅ Columna 'attachment_data' verificada")
+        except Exception as e:
+            print(f"     ⚠️ attachment_data: {e}")
+        
+        connection.commit()
+    
+    print("🎉 MIGRACIONES COMPLETADAS")
+
 def reset_database():
     print("💥 INICIANDO LIMPIEZA NUCLEAR...")
     
@@ -105,4 +147,21 @@ def reset_database():
         db.close()
 
 if __name__ == "__main__":
-    reset_database()
+    print("\n🔧 HERRAMIENTA DE BASE DE DATOS")
+    print("=" * 40)
+    print("1. MIGRAR - Agregar columnas nuevas (NO borra datos)")
+    print("2. RESET  - Borrar TODO y recrear desde cero")
+    print("=" * 40)
+    
+    opcion = input("Elige opción (1/2): ").strip()
+    
+    if opcion == "1":
+        migrate_database()
+    elif opcion == "2":
+        confirmacion = input("⚠️ Esto BORRARÁ todos los datos. Escribir 'BORRAR' para confirmar: ")
+        if confirmacion == "BORRAR":
+            reset_database()
+        else:
+            print("❌ Operación cancelada.")
+    else:
+        print("❌ Opción inválida.")

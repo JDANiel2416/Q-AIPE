@@ -23,6 +23,9 @@ class User(Base):
     role = Column(String, default="CLIENT") # 'CLIENT', 'BODEGUERO', 'ADMIN'
     is_active = Column(Boolean, default=True)   # Para bloquear usuarios maliciosos
     is_verified = Column(Boolean, default=False) # ¿Ya validó su DNI con Reniec?
+    
+    # Push Notifications
+    fcm_token = Column(String, nullable=True)  # Token de Firebase Cloud Messaging
 
     # Auditoría (Opcional pero recomendado)
     created_at = Column(TIMESTAMP, server_default=text("now()"))
@@ -77,6 +80,12 @@ class ChatSession(Base):
     # Puede ser NULL si es un usuario "invitado" o temporal, pero idealmente linkeado
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     search_state = Column(JSONB, default=[]) # Almacena la intención actual del usuario
+    
+    # NUEVO: Título descriptivo del chat (ej: "Arroz y Coca Cola")
+    title = Column(String, nullable=True)
+    # NUEVO: Indica si es la sesión activa actual
+    is_active = Column(Boolean, default=True)
+    
     created_at = Column(TIMESTAMP, server_default=text("now()"))
     updated_at = Column(TIMESTAMP, server_default=text("now()"), onupdate=text("now()"))
 
@@ -93,6 +102,9 @@ class ChatMessage(Base):
     
     role = Column(String, nullable=False) # 'user' o 'assistant'
     content = Column(String, nullable=False) # El texto del mensaje
+    
+    # NUEVO: Datos adjuntos (ej: resultados de búsqueda, productos recomendados)
+    attachment_data = Column(JSONB, nullable=True)
     
     created_at = Column(TIMESTAMP, server_default=text("now()"))
 
