@@ -144,7 +144,7 @@ class TicketScreen extends StatelessWidget {
           return pw.Center(
             child: pw.Column(
               children: [
-                pw.Header(level: 0, child: pw.Text("Comprobante de Reserva Q-AIPE")),
+                pw.Header(level: 0, child: pw.Text("Comprobante de Reserva Chek")),
                 pw.SizedBox(height: 20),
                 pw.Text("Cliente: ${ticketData['formatted_name']}"),
                 pw.Text("Total: S/${ticketData['total'].toStringAsFixed(2)}"),
@@ -156,7 +156,7 @@ class TicketScreen extends StatelessWidget {
                   height: 200,
                 ),
                 pw.SizedBox(height: 20),
-                pw.Text("Gracias por usar Q-AIPE"),
+                pw.Text("Gracias por usar Chek"),
               ],
             ),
           );

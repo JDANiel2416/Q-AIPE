@@ -1,11 +1,11 @@
 {
-    "name": "frontend",
-    "short_name": "frontend",
+    "name": "Chek",
+    "short_name": "Chek",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0F111A",
     "theme_color": "#4D6FFF",
-    "description": "A new Flutter project.",
+    "description": "Chek - Sistema de reservas",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

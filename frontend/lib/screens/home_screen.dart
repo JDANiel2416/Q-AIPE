@@ -788,7 +788,7 @@ class _HomeScreenState extends State<HomeScreen> {
           }),
           
           const Text(
-            "Q-AIPE",
+            "Chek",
             style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, letterSpacing: 2.0, fontSize: 13),
           ),
           

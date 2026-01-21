@@ -13,7 +13,7 @@ class ApiService {
     //if (Platform.isAndroid) return "http://192.168.0.103:8000/api/v1"; 
     
     //return "http://127.0.0.1:8000/api/v1";
-    const String publicUrl = "https://4dc065f76bd3.ngrok-free.app";
+    const String publicUrl = "https://ayden-applicatory-untremblingly.ngrok-free.dev";
     return "$publicUrl/api/v1";
   }
 

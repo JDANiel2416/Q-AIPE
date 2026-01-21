@@ -22,7 +22,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final ScrollController _scrollController = ScrollController();
   
   final List<Map<String, dynamic>> _messages = [
-    {"role": "bot", "text": "¡Habla, vecino! 👋 Soy Q-AIPE.\nPara empezar, ¿me dictas tu número de DNI?"}
+    {"role": "bot", "text": "¡Habla, vecino! 👋 Soy Chek.\nPara empezar, ¿me dictas tu número de DNI?"}
   ];
 
   // Pasos: 0=DNI, 1=Nombre, 2=Celular, 3=Password, 4=ROL, 5=BodegaData
