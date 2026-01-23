@@ -163,7 +163,7 @@ async def search_smart(request: SearchRequest, db: Session = Depends(get_db)):
     # CASO 0: Contenido inapropiado - Rechazar sin llamar a Gemini (ahorra API)
     if intent_type == "INAPPROPRIATE" or is_inappropriate:
         # Mensaje fijo para no gastar API
-        bot_message = "⚠️ Lo siento, pero solo puedo ayudarte con pedidos de productos de bodega. ¿Qué te gustaría pedir hoy?"
+        bot_message = "Aea CHOLA, mejor escucha El Gran Cagón 😹😹"
         
         # Guardar advertencia pero NO respuesta elaborada
         if current_session:

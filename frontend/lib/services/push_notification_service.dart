@@ -33,6 +33,12 @@ class PushNotificationService {
   String? _pendingOrderId;
   String? get pendingOrderId => _pendingOrderId;
   
+  /// Establecer navegación pendiente (llamado desde main.dart)
+  void setPendingNavigation(String orderId) {
+    _pendingOrderId = orderId;
+    print('📌 Navegación pendiente guardada: $orderId');
+  }
+  
   /// Limpiar navegación pendiente después de procesarla
   void clearPendingNavigation() {
     _pendingOrderId = null;
@@ -227,6 +233,33 @@ class PushNotificationService {
     }
   }
   
+  /// Manejar notificación de OneSignal (Click o Foreground)
+  void handleOneSignalNotification(Map<String, dynamic> data) {
+    final type = data['type'];
+    final reservationId = data['reservation_id'];
+    
+    if (type == 'NEW_ORDER' && reservationId != null) {
+      print('🔔 [OneSignal] Evento NEW_ORDER procesado para navegación');
+      _orderEventController.add({
+        'type': 'NAVIGATE_TO_ORDER',
+        'reservation_id': reservationId,
+      });
+    }
+  }
+
+  /// Manejar evento de Foreground de OneSignal (solo actualizar datos)
+  void handleOneSignalForegroundEvent(Map<String, dynamic> data) {
+    final type = data['type'];
+    if (type == 'NEW_ORDER') {
+      print('🔔 [OneSignal] Evento NEW_ORDER en Foreground -> Actualizando Dashboard');
+      _orderEventController.add({
+        'type': 'NEW_ORDER',
+        'reservation_id': data['reservation_id'],
+        'total': data['total'],
+      });
+    }
+  }
+
   /// Limpiar recursos
   void dispose() {
     _orderEventController.close();

@@ -50,6 +50,8 @@ dependencies:
   firebase_core: ^3.8.1
   firebase_messaging: ^15.1.6
   flutter_local_notifications: ^17.0.0
+  onesignal_flutter: ^5.3.5
+  flutter_slidable: ^4.0.3
 
 dev_dependencies:
   flutter_test:

@@ -53,10 +53,12 @@ async def create_reservation(request: CreateReservationRequest, db: Session = De
 
         for item in request.items:
             # Buscar el producto en el inventario de la bodega
+            # BLOQUEO PESIMISTA: with_for_update() evita race conditions
+            # cuando múltiples usuarios compran el mismo producto simultáneamente
             inventory_item = db.query(StoreInventory).filter(
                 StoreInventory.bodega_id == request.bodega_id,
                 StoreInventory.product_id == item.product_id
-            ).first()
+            ).with_for_update().first()
 
             if not inventory_item:
                 raise HTTPException(status_code=400, detail=f"El producto '{item.product_name}' no existe en esta bodega.")
@@ -100,28 +102,29 @@ async def create_reservation(request: CreateReservationRequest, db: Session = De
         )
         print(f"\n📨 ENVIANDO NOTIFICACIÓN A BODEGUERO ({bodega.name}):\n{notification_msg}\n")
 
-        # --- NOTIFICACIÓN PUSH FCM ---
-        from app.services.push_service import send_push_notification
+        # --- NOTIFICACIÓN PUSH ONESIGNAL ---
+        from app.services.notification_service import notification_service
         
         # Obtener el usuario bodeguero (dueño de la bodega)
         bodeguero = db.query(User).filter(User.id == bodega.owner_id).first()
         
         # IMPORTANTE: Solo enviar si:
-        # 1. El bodeguero existe y tiene token FCM
-        # 2. El bodeguero NO es el mismo usuario que hizo el pedido (evitar auto-notificación)
-        # 3. El token del bodeguero es diferente al del cliente (evitar mismo dispositivo)
+        # 1. El bodeguero existe y tiene token (OneSignal ID guardado en fcm_token)
+        # 2. El bodeguero NO es el mismo usuario que hizo el pedido
+        # 3. El token del bodeguero es diferente al del cliente
         if bodeguero and bodeguero.fcm_token:
             # Verificar que no sea el mismo usuario
             if str(bodeguero.id) == str(request.user_id):
                 print(f"⚠️ El bodeguero es el mismo que el cliente, no se envía notificación")
-            # Verificar que no sea el mismo dispositivo
+            # Verificar que no sea el mismo dispositivo (opcional, pero buena práctica)
             elif user.fcm_token and bodeguero.fcm_token == user.fcm_token:
-                print(f"⚠️ Cliente y bodeguero usan el mismo dispositivo, no se envía notificación")
+                print(f"⚠️ Cliente y bodeguero usan el mismo dispositivo/token, no se envía notificación")
             else:
-                await send_push_notification(
-                    fcm_token=bodeguero.fcm_token,
+                # Enviar notificación vía OneSignal
+                notification_service.send_notification(
                     title="¡Nuevo Pedido Recibido!",
-                    body=f"{formatted_name} ha realizado un pedido de S/{total_amount:.2f}",
+                    message=f"{formatted_name} ha realizado un pedido de S/{total_amount:.2f}",
+                    player_ids=[bodeguero.fcm_token],
                     data={
                         "type": "NEW_ORDER",
                         "reservation_id": str(reservation_id),
@@ -130,8 +133,8 @@ async def create_reservation(request: CreateReservationRequest, db: Session = De
                 )
                 print(f"✅ Notificación enviada a bodeguero: {bodeguero.full_name}")
         else:
-            print(f"⚠️ Bodeguero sin FCM token registrado, no se puede enviar push")
-        # ------------------------------
+            print(f"⚠️ Bodeguero sin token registrado, no se puede enviar push")
+        # -----------------------------------
 
         return {
             "success": True,

@@ -14,6 +14,10 @@ class Settings(BaseSettings):
     # Inteligencia Artificial
     GEMINI_API_KEY: str
 
+    # Notificaciones (OneSignal)
+    ONESIGNAL_APP_ID: str
+    ONESIGNAL_API_KEY: str
+
     # Configuración para leer el archivo .env automáticamente
     class Config:
         env_file = ".env"

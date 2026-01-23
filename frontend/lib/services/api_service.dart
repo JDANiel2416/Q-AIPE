@@ -462,8 +462,10 @@ Future<Map<String, dynamic>> consultDni(String dni) async {
     }
   }
 
-  // Registrar token FCM para notificaciones push
-  Future<bool> registerFcmToken(String userId, String fcmToken) async {
+  // Registrar token Push (OneSignal Player ID)
+  Future<bool> registerOneSignalToken(String userId, String oneSignalId) async {
+    // Reutilizamos el endpoint existente de FCM para guardar el ID de OneSignal
+    // ya que la estructura en BD es la misma (un string en User.fcm_token)
     final url = Uri.parse('$baseUrl/auth/register-fcm-token');
     
     try {
@@ -472,21 +474,26 @@ Future<Map<String, dynamic>> consultDni(String dni) async {
         headers: {"Content-Type": "application/json"},
         body: jsonEncode({
           "user_id": userId,
-          "fcm_token": fcmToken
+          "fcm_token": oneSignalId // Enviamos el OneSignal ID aquí
         }),
       );
       
       if (response.statusCode == 200) {
-        print("✅ FCM Token registered successfully");
+        print("✅ OneSignal ID registered successfully: $oneSignalId");
         return true;
       } else {
-        print("❌ Failed to register FCM token: ${response.body}");
+        print("❌ Failed to register OneSignal ID: ${response.body}");
         return false;
       }
     } catch (e) {
-      print("Error registering FCM token: $e");
+      print("Error registering OneSignal ID: $e");
       return false;
     }
+  }
+
+  // Registrar token FCM para notificaciones push (LEGADO)
+  Future<bool> registerFcmToken(String userId, String fcmToken) async {
+    return registerOneSignalToken(userId, fcmToken);
   }
 
   // NUEVO: Obtener estadísticas del dashboard
@@ -651,6 +658,60 @@ Future<Map<String, dynamic>> consultDni(String dni) async {
     } catch (e) {
       print("Error unregistering FCM token: $e");
       return false;
+    }
+  }
+
+  /// Validar si un número de teléfono ya está registrado
+  Future<Map<String, dynamic>> validatePhone(String phone) async {
+    final url = Uri.parse('$baseUrl/auth/validate-phone');
+    
+    try {
+      final response = await http.post(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({"phone": phone}),
+      );
+      
+      if (response.statusCode == 200) {
+        return jsonDecode(utf8.decode(response.bodyBytes));
+      } else {
+        return {"available": false, "message": "Error al validar teléfono"};
+      }
+    } catch (e) {
+      print("Error validating phone: $e");
+      return {"available": false, "message": "Error de conexión: $e"};
+    }
+  }
+
+  /// Obtener lista de deudores (clientes con fiado)
+  Future<Map<String, dynamic>> getDebtors(String userId) async {
+    final url = Uri.parse('$baseUrl/bodeguero/debtors?user_id=$userId');
+    
+    try {
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        return jsonDecode(utf8.decode(response.bodyBytes));
+      }
+      return {"total_credit": 0.0, "debtors_count": 0, "debtors": []};
+    } catch (e) {
+      print("Error fetching debtors: $e");
+      return {"total_credit": 0.0, "debtors_count": 0, "debtors": []};
+    }
+  }
+
+  /// Obtener detalle de pedidos fiados de un cliente específico
+  Future<Map<String, dynamic>> getDebtorOrders(String userId, String debtorId) async {
+    final url = Uri.parse('$baseUrl/bodeguero/debtors/$debtorId/orders?user_id=$userId');
+    
+    try {
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        return jsonDecode(utf8.decode(response.bodyBytes));
+      }
+      return {"orders": []};
+    } catch (e) {
+      print("Error fetching debtor orders: $e");
+      return {"orders": []};
     }
   }
 

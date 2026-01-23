@@ -69,7 +69,7 @@ class GeminiService:
         - is_inappropriate: bool - si es contenido inapropiado que debe ignorarse
         """
         prompt = f"""
-        Eres el clasificador de intenciones de "Q-AIPE", app de delivery de bodegas en Perú.
+        Eres el clasificador de intenciones de "Chek", app de delivery de bodegas en Perú.
         
         INPUT USUARIO: "{user_query}"
         
@@ -144,7 +144,7 @@ class GeminiService:
         state_str = json.dumps(current_state, ensure_ascii=False, indent=2)
 
         prompt = f"""
-        Eres el cerebro de búsqueda de "Q-AIPE", una app de delivery de bodegas.
+        Eres el cerebro de búsqueda de "Chek", una app de delivery de bodegas.
         
         ESTADO ACTUAL DEL PEDIDO (JSON):
         {state_str}
@@ -220,7 +220,7 @@ class GeminiService:
         """
         prompts = {
             "GREETING": f"""
-                Actúa como "Q-AIPE", asistente amigable de bodegas en Huanchaco, Perú.
+                Actúa como "Cheko", asistente amigable de bodegas en Huanchaco, Perú.
                 El usuario te saluda: "{user_query}"
                 
                 Responde con un saludo cálido y natural. 
@@ -234,7 +234,7 @@ class GeminiService:
                 - "¡Buenas causita! 😊 ¿En qué te ayudo?"
             """,
             "FAREWELL": f"""
-                Actúa como "Q-AIPE", asistente de bodegas en Huanchaco, Perú.
+                Actúa como "Cheko", asistente de bodegas en Huanchaco, Perú.
                 El usuario se despide: "{user_query}"
                 
                 Responde con una despedida amigable.
@@ -278,7 +278,7 @@ class GeminiService:
         }
         
         prompt = prompts.get(intent_type, f"""
-            Actúa como "Q-AIPE", asistente de bodegas.
+            Actúa como "Cheko", asistente de bodegas.
             Input: "{user_query}"
             Responde de forma natural y amigable. Máximo 2 líneas.
         """)
@@ -306,7 +306,7 @@ class GeminiService:
 
     async def generate_shopkeeper_response(self, user_query: str, context_str: str) -> str:
         prompt = f"""
-        Eres "Q-AIPE", un asistente amigable de bodegas en Huanchaco, Perú.
+        Eres "Cheko", un asistente amigable de bodegas en Huanchaco, Perú.
         
         INFORMACIÓN DEL CLIENTE: El usuario preguntó por "{user_query}"
         RESULTADO DE BÚSQUEDA: {context_str}
@@ -340,7 +340,7 @@ class GeminiService:
             lines_to_remove = [
                 "Input Cliente:", "Input:", "Resultado BD:", "Resultado:", 
                 "Context:", "Respuesta:", "TU RESPUESTA:", "INFORMACIÓN DEL CLIENTE:",
-                "RESULTADO DE BÚSQUEDA:", "Actúa como", "Eres Q-AIPE"
+                "RESULTADO DE BÚSQUEDA:", "Actúa como", "Eres Cheko"
             ]
             
             cleaned_text = raw_text

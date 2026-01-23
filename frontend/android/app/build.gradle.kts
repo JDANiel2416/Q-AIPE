@@ -4,6 +4,7 @@ plugins {
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
     id("com.google.gms.google-services")
+    id("com.huawei.agconnect")
 }
 
 android {
@@ -38,6 +39,14 @@ android {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
+            
+            // Habilitar minificación pero con reglas para proteger clases críticas
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
         }
     }
 }
@@ -49,5 +58,14 @@ flutter {
 dependencies {
     // Esta línea permite que MainActivity.kt vea las clases de Yandex
     implementation("com.yandex.android:maps.mobile:4.6.1-lite")
+    implementation("com.huawei.hms:push:6.12.0.300")
+    
+    // Import the Firebase BoM
+    implementation(platform("com.google.firebase:firebase-bom:32.7.0"))
+    // Add the dependency for the Firebase SDK for Google Analytics
+    implementation("com.google.firebase:firebase-analytics")
+    // Add the dependencies for any other desired Firebase products
+    implementation("com.google.firebase:firebase-messaging")
+    
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.3")
 }

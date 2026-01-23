@@ -75,10 +75,11 @@ def toggle_stock(user_id: str, update: StockUpdate, db: Session = Depends(get_db
         raise HTTPException(status_code=404, detail="Bodega no encontrada")
 
     # 2. Buscar el item en el inventario
+    # BLOQUEO PESIMISTA: evita race conditions en actualizaciones concurrentes
     item = db.query(StoreInventory).filter(
         StoreInventory.bodega_id == bodega.id,
         StoreInventory.product_id == update.product_id
-    ).first()
+    ).with_for_update().first()
 
     if not item:
         raise HTTPException(status_code=404, detail="Producto no encontrado en tu tienda")
@@ -134,8 +135,7 @@ def add_custom_product(
             default_unit="UND"
         )
         db.add(new_master)
-        db.commit()
-        db.refresh(new_master)
+        db.flush()  # Asigna ID sin hacer commit (transacción atómica)
         master_id = new_master.id
 
     # 3. Agregarlo al inventario de la bodega
@@ -164,10 +164,11 @@ def update_product_by_id(
         raise HTTPException(status_code=404, detail="No tienes bodega")
 
     # 2. Buscar en el inventario de la bodega por product_id
+    # BLOQUEO PESIMISTA: evita race conditions en actualizaciones concurrentes de stock
     existing_inv = db.query(StoreInventory).filter(
         StoreInventory.bodega_id == bodega.id,
         StoreInventory.product_id == update_data.product_id
-    ).first()
+    ).with_for_update().first()
 
     if not existing_inv:
         raise HTTPException(status_code=404, detail="Producto no encontrado en tu inventario")
@@ -409,10 +410,40 @@ def update_order_status(
     if not order:
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
     
-    order.status = status_data.status
+    previous_status = order.status
+    new_status = status_data.status
+    
+    # RESTAURAR STOCK SI SE CANCELA UN PEDIDO PENDIENTE
+    if new_status == "CANCELLED" and previous_status == "PENDING":
+        # Iterar por cada item del pedido y restaurar el stock
+        for item in order.items:
+            # Buscar el producto en el inventario
+            # Usamos with_for_update para evitar race conditions
+            inventory_item = db.query(StoreInventory).filter(
+                StoreInventory.bodega_id == order.bodega_id,
+                StoreInventory.product_id == db.query(MasterProduct.id).filter(
+                    MasterProduct.name == item.product_name
+                ).scalar()
+            ).with_for_update().first()
+            
+            if inventory_item:
+                # Restaurar la cantidad al stock
+                inventory_item.stock_quantity += item.quantity
+                
+                # Reactivar el producto si estaba desactivado por falta de stock
+                if inventory_item.stock_quantity > 0:
+                    inventory_item.is_available = True
+                
+                print(f"✅ Stock restaurado: +{item.quantity} de '{item.product_name}'")
+    
+    order.status = new_status
     db.commit()
     
-    return {"success": True, "message": f"Pedido actualizado a {status_data.status}"}
+    message = f"Pedido actualizado a {new_status}"
+    if new_status == "CANCELLED" and previous_status == "PENDING":
+        message += " (stock restaurado)"
+    
+    return {"success": True, "message": message}
 
 @router.delete("/delete-product")
 def delete_product(user_id: str, product_id: int, db: Session = Depends(get_db)):
@@ -531,19 +562,30 @@ def get_dashboard_stats(user_id: str, db: Session = Depends(get_db)):
             ]
         })
 
-    # 6. Ventas mensuales del año actual
-    current_year = datetime.now().year
-    monthly_sales = []
-    for month in range(1, 13):
-        month_total = db.query(func.coalesce(func.sum(Reservation.total_amount), 0)).filter(
+    # 6. Ventas de la semana actual (Lunes a Domingo)
+    today = datetime.now()
+    # Calcular el lunes de esta semana
+    monday = today - timedelta(days=today.weekday())
+    monday = monday.replace(hour=0, minute=0, second=0, microsecond=0)
+    
+    weekly_sales = []
+    day_names = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
+    
+    for i in range(7):
+        day_start = monday + timedelta(days=i)
+        day_end = day_start + timedelta(days=1)
+        
+        day_total = db.query(func.coalesce(func.sum(Reservation.total_amount), 0)).filter(
             Reservation.bodega_id == bodega.id,
             Reservation.status.in_(["PAID", "COMPLETED"]),
-            extract('year', Reservation.created_at) == current_year,
-            extract('month', Reservation.created_at) == month
+            Reservation.created_at >= day_start,
+            Reservation.created_at < day_end
         ).scalar()
-        monthly_sales.append({
-            "month": month,
-            "total": float(month_total) if month_total else 0.0
+        
+        weekly_sales.append({
+            "day": i,
+            "day_name": day_names[i],
+            "total": float(day_total) if day_total else 0.0
         })
 
     # 7. Productos más y menos vendidos (basado en ReservationItem)
@@ -560,13 +602,133 @@ def get_dashboard_stats(user_id: str, db: Session = Depends(get_db)):
     best_selling = product_sales[0].product_name if product_sales else None
     least_selling = product_sales[-1].product_name if len(product_sales) > 1 else None
 
+    # 8. NUEVO: Total de dinero fiado (pedidos con status CREDIT)
+    total_credit = db.query(func.coalesce(func.sum(Reservation.total_amount), 0)).filter(
+        Reservation.bodega_id == bodega.id,
+        Reservation.status == "CREDIT"
+    ).scalar()
+
     return {
         "earnings_today": float(earnings_today) if earnings_today else 0.0,
         "orders_today": orders_today or 0,
         "pending_orders_count": len(pending_orders_data),
         "pending_orders": pending_orders_data,
-        "monthly_sales": monthly_sales,
+        "weekly_sales": weekly_sales,  # Cambiado de monthly_sales
         "best_selling_product": best_selling,
         "least_selling_product": least_selling,
-        "current_year": current_year
+        "total_credit": float(total_credit) if total_credit else 0.0
+    }
+
+# NUEVO: Endpoint para obtener lista de deudores (clientes que deben dinero)
+@router.get("/debtors")
+def get_debtors(user_id: str, db: Session = Depends(get_db)):
+    """
+    Obtiene la lista de clientes que tienen pedidos fiados (status CREDIT).
+    Agrupa por cliente y suma el total que debe cada uno.
+    """
+    # 1. Buscar bodega del usuario
+    bodega = db.query(Bodega).filter(Bodega.owner_id == user_id).first()
+    if not bodega:
+        raise HTTPException(status_code=404, detail="Bodega no encontrada")
+
+    # 2. Obtener pedidos con status CREDIT agrupados por cliente
+    debtors_query = db.query(
+        User.id.label('user_id'),
+        User.full_name.label('client_name'),
+        User.phone_number.label('phone'),
+        func.sum(Reservation.total_amount).label('total_debt'),
+        func.count(Reservation.id).label('orders_count')
+    ).join(Reservation, User.id == Reservation.user_id).filter(
+        Reservation.bodega_id == bodega.id,
+        Reservation.status == "CREDIT"
+    ).group_by(User.id, User.full_name, User.phone_number).order_by(
+        func.sum(Reservation.total_amount).desc()
+    ).all()
+
+    # 3. Formatear respuesta
+    debtors_list = []
+    total_credit = 0.0
+    
+    for debtor in debtors_query:
+        debt_amount = float(debtor.total_debt) if debtor.total_debt else 0.0
+        total_credit += debt_amount
+        
+        debtors_list.append({
+            "user_id": str(debtor.user_id),
+            "client_name": debtor.client_name or "Cliente Anónimo",
+            "phone": debtor.phone or "",
+            "total_debt": debt_amount,
+            "orders_count": debtor.orders_count
+        })
+
+    return {
+        "total_credit": total_credit,
+        "debtors_count": len(debtors_list),
+        "debtors": debtors_list
+    }
+
+# NUEVO: Obtener detalle de pedidos fiados de un cliente específico
+@router.get("/debtors/{debtor_id}/orders")
+def get_debtor_orders(debtor_id: str, user_id: str, db: Session = Depends(get_db)):
+    """
+    Obtiene el detalle de todos los pedidos fiados de un cliente específico.
+    Incluye productos, cantidades, precios al momento de la compra, y fechas.
+    """
+    # 1. Buscar bodega del usuario (bodeguero)
+    bodega = db.query(Bodega).filter(Bodega.owner_id == user_id).first()
+    if not bodega:
+        raise HTTPException(status_code=404, detail="Bodega no encontrada")
+
+    # 2. Obtener información del deudor
+    debtor = db.query(User).filter(User.id == debtor_id).first()
+    if not debtor:
+        raise HTTPException(status_code=404, detail="Cliente no encontrado")
+
+    # 3. Obtener todos los pedidos CREDIT de este cliente en esta bodega
+    orders = db.query(Reservation).filter(
+        Reservation.bodega_id == bodega.id,
+        Reservation.user_id == debtor_id,
+        Reservation.status == "CREDIT"
+    ).order_by(Reservation.created_at.desc()).all()
+
+    # 4. Formatear respuesta con detalle de cada pedido
+    orders_list = []
+    total_debt = 0.0
+
+    for order in orders:
+        order_total = float(order.total_amount)
+        total_debt += order_total
+        
+        # Formatear fecha y hora
+        created_at = order.created_at
+        date_str = created_at.strftime("%d/%m/%Y")
+        time_str = created_at.strftime("%H:%M")
+        
+        # Items con precio al momento de la compra
+        items_data = [
+            {
+                "product_name": item.product_name,
+                "quantity": item.quantity,
+                "unit_price": float(item.unit_price),  # Precio cuando lo compró
+                "total_price": float(item.total_price)
+            }
+            for item in order.items
+        ]
+        
+        orders_list.append({
+            "order_id": str(order.id),
+            "date": date_str,
+            "time": time_str,
+            "created_at": created_at.isoformat(),
+            "total_amount": order_total,
+            "items": items_data
+        })
+
+    return {
+        "debtor_id": debtor_id,
+        "client_name": debtor.full_name or "Cliente Anónimo",
+        "phone": debtor.phone_number or "",
+        "total_debt": total_debt,
+        "orders_count": len(orders_list),
+        "orders": orders_list
     }

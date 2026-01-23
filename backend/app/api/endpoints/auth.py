@@ -111,6 +111,28 @@ def unregister_fcm_token(req: UnregisterFCMTokenRequest, db: Session = Depends(g
         print(f"🔓 FCM Token eliminado para usuario {user.full_name}")
     return {"success": True, "message": "FCM token eliminado correctamente"}
 
+
+class ValidatePhoneRequest(BaseModel):
+    phone: str
+
+
+@router.post("/validate-phone")
+def validate_phone(req: ValidatePhoneRequest, db: Session = Depends(get_db)):
+    """Valida si un número de teléfono ya está registrado en la base de datos."""
+    existing_user = db.query(User).filter(User.phone_number == req.phone).first()
+    
+    if existing_user:
+        return {
+            "available": False,
+            "message": "Este número ya está asociado a otra cuenta"
+        }
+    
+    return {
+        "available": True,
+        "message": "Número disponible"
+    }
+
+
 @router.post("/register")
 async def register(req: RegisterRequest, db: Session = Depends(get_db)): # <--- 1. AHORA ES ASYNC
     # Validar si ya existe

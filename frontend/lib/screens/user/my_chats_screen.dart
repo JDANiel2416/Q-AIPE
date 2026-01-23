@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
-import '../services/api_service.dart';
-import '../services/session_service.dart';
+import '../../services/api_service.dart';
+import '../../services/session_service.dart';
+import 'shared_drawer.dart';
 
 class MyChatsScreen extends StatefulWidget {
   const MyChatsScreen({super.key});
@@ -10,7 +12,7 @@ class MyChatsScreen extends StatefulWidget {
   State<MyChatsScreen> createState() => _MyChatsScreenState();
 }
 
-class _MyChatsScreenState extends State<MyChatsScreen> {
+class _MyChatsScreenState extends State<MyChatsScreen> with TickerProviderStateMixin, UserDrawerMixin {
   final ApiService _apiService = ApiService();
   List<dynamic> _chats = [];
   bool _isLoading = true;
@@ -19,7 +21,25 @@ class _MyChatsScreenState extends State<MyChatsScreen> {
   @override
   void initState() {
     super.initState();
+    initDrawer(); // Inicializar drawer
+    
+    // Configurar la barra de estado transparente
+    SystemChrome.setSystemUIOverlayStyle(
+      const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.dark,
+        systemNavigationBarColor: Colors.white,
+        systemNavigationBarIconBrightness: Brightness.dark,
+      ),
+    );
+    
     _loadChats();
+  }
+
+  @override
+  void dispose() {
+    disposeDrawer();
+    super.dispose();
   }
 
   Future<void> _loadChats() async {
@@ -45,25 +65,25 @@ class _MyChatsScreenState extends State<MyChatsScreen> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1F2E),
+        backgroundColor: Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Row(
           children: [
             Icon(Icons.warning_amber_rounded, color: Colors.orange[400], size: 28),
             const SizedBox(width: 12),
-            const Text("Eliminar chat", style: TextStyle(color: Colors.white)),
+            const Text("Eliminar chat", style: TextStyle(color: Color(0xFF111827))),
           ],
         ),
         content: Text(
           isCurrent 
             ? "Este es tu chat actual. Al eliminarlo se creará uno nuevo automáticamente. ¿Continuar?"
             : "¿Seguro que quieres eliminar este chat? Esta acción no se puede deshacer.",
-          style: TextStyle(color: Colors.white.withOpacity(0.7)),
+          style: TextStyle(color: Color(0xFF6B7280)),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: Text("Cancelar", style: TextStyle(color: Colors.white.withOpacity(0.5))),
+            child: Text("Cancelar", style: TextStyle(color: Color(0xFF9CA3AF))),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
@@ -188,50 +208,77 @@ class _MyChatsScreenState extends State<MyChatsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final drawerWidth = MediaQuery.of(context).size.width * 0.80;
+    
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0E1A),
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        title: const Text(
-          "Mis Chats",
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 20),
-        ),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
-          onPressed: () => Navigator.pop(context),
-        ),
-        actions: [
-          // Botón nuevo chat
-          Container(
-            margin: const EdgeInsets.only(right: 12),
-            child: IconButton(
-              onPressed: _isLoading ? null : _createNewChat,
-              icon: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF00D9FF).withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Icon(Icons.add, color: Color(0xFF00D9FF), size: 20),
+      backgroundColor: const Color(0xFFF9FAFB),
+      body: GestureDetector(
+        onHorizontalDragStart: (details) => onHorizontalDragStart(details, drawerWidth),
+        onHorizontalDragUpdate: (details) => onHorizontalDragUpdate(details, drawerWidth),
+        onHorizontalDragEnd: onHorizontalDragEnd,
+        child: Stack(
+          children: [
+            // Contenido principal
+            SafeArea(
+              child: Column(
+                children: [
+                  // AppBar personalizado con botón de menú
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    child: Row(
+                      children: [
+                        buildCircleBtn(Icons.menu_rounded, openDrawer),
+                        const SizedBox(width: 16),
+                        const Expanded(
+                          child: Text(
+                            "Mis Chats",
+                            style: TextStyle(
+                              color: Color(0xFF111827),
+                              fontWeight: FontWeight.bold,
+                              fontSize: 20,
+                            ),
+                          ),
+                        ),
+                        // Botón nuevo chat
+                        GestureDetector(
+                          onTap: _isLoading ? null : _createNewChat,
+                          child: Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF0062FF).withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: const Icon(Icons.add, color: Color(0xFF0062FF), size: 20),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  // Contenido
+                  Expanded(
+                    child: _isLoading
+                        ? const Center(child: CircularProgressIndicator(color: Color(0xFF0062FF)))
+                        : _chats.isEmpty
+                            ? _buildEmptyState()
+                            : RefreshIndicator(
+                                onRefresh: _loadChats,
+                                color: const Color(0xFF0062FF),
+                                child: ListView.builder(
+                                  padding: const EdgeInsets.all(16),
+                                  itemCount: _chats.length,
+                                  itemBuilder: (context, index) => _buildChatItem(_chats[index], index),
+                                ),
+                              ),
+                  ),
+                ],
               ),
             ),
-          ),
-        ],
+            
+            // Drawer overlay
+            buildDrawerOverlay(context),
+          ],
+        ),
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: Color(0xFF00D9FF)))
-          : _chats.isEmpty
-              ? _buildEmptyState()
-              : RefreshIndicator(
-                  onRefresh: _loadChats,
-                  color: const Color(0xFF00D9FF),
-                  child: ListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: _chats.length,
-                    itemBuilder: (context, index) => _buildChatItem(_chats[index], index),
-                  ),
-                ),
     );
   }
 
@@ -243,20 +290,20 @@ class _MyChatsScreenState extends State<MyChatsScreen> {
           Container(
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
-              color: const Color(0xFF1A1F2E),
+              color: const Color(0xFFF3F4F6),
               shape: BoxShape.circle,
             ),
-            child: Icon(Icons.chat_bubble_outline, size: 60, color: Colors.white.withOpacity(0.3)),
+            child: Icon(Icons.chat_bubble_outline, size: 60, color: const Color(0xFF9CA3AF)),
           ),
           const SizedBox(height: 24),
           Text(
             "No tienes chats",
-            style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 18, fontWeight: FontWeight.w600),
+            style: TextStyle(color: Color(0xFF111827), fontSize: 18, fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 8),
           Text(
             "Inicia una conversación para pedir productos",
-            style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 14),
+            style: TextStyle(color: Color(0xFF6B7280), fontSize: 14),
           ),
           const SizedBox(height: 32),
           ElevatedButton.icon(
@@ -264,7 +311,7 @@ class _MyChatsScreenState extends State<MyChatsScreen> {
             icon: const Icon(Icons.add),
             label: const Text("Nuevo Chat"),
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF00D9FF),
+              backgroundColor: const Color(0xFF0062FF),
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -311,19 +358,19 @@ class _MyChatsScreenState extends State<MyChatsScreen> {
                 gradient: isCurrent
                     ? LinearGradient(
                         colors: [
-                          const Color(0xFF00D9FF).withOpacity(0.15),
-                          const Color(0xFF00D9FF).withOpacity(0.05),
+                          const Color(0xFF0062FF).withOpacity(0.15),
+                          const Color(0xFF0062FF).withOpacity(0.05),
                         ],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                       )
                     : null,
-                color: isCurrent ? null : const Color(0xFF1A1F2E),
+                color: isCurrent ? null : Colors.white,
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
                   color: isCurrent 
-                      ? const Color(0xFF00D9FF).withOpacity(0.4) 
-                      : Colors.white.withOpacity(0.05),
+                      ? const Color(0xFF0062FF).withOpacity(0.4) 
+                      : const Color(0xFFE5E7EB),
                   width: isCurrent ? 1.5 : 1,
                 ),
               ),
@@ -335,19 +382,19 @@ class _MyChatsScreenState extends State<MyChatsScreen> {
                     height: 48,
                     decoration: BoxDecoration(
                       color: isCurrent 
-                          ? const Color(0xFF00D9FF).withOpacity(0.2)
+                          ? const Color(0xFF0062FF).withOpacity(0.2)
                           : hasProducts
                               ? Colors.green.withOpacity(0.1)
-                              : Colors.white.withOpacity(0.05),
+                              : const Color(0xFFF3F4F6),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Icon(
                       hasProducts ? Icons.shopping_cart_outlined : Icons.chat_bubble_outline,
                       color: isCurrent 
-                          ? const Color(0xFF00D9FF)
+                          ? const Color(0xFF0062FF)
                           : hasProducts
                               ? Colors.green[400]
-                              : Colors.white54,
+                              : const Color(0xFF9CA3AF),
                       size: 22,
                     ),
                   ),
@@ -364,7 +411,7 @@ class _MyChatsScreenState extends State<MyChatsScreen> {
                               child: Text(
                                 title,
                                 style: TextStyle(
-                                  color: Colors.white,
+                                  color: Color(0xFF111827),
                                   fontWeight: isCurrent ? FontWeight.bold : FontWeight.w500,
                                   fontSize: 15,
                                 ),
@@ -377,7 +424,7 @@ class _MyChatsScreenState extends State<MyChatsScreen> {
                                 margin: const EdgeInsets.only(left: 8),
                                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFF00D9FF),
+                                  color: const Color(0xFF0062FF),
                                   borderRadius: BorderRadius.circular(6),
                                 ),
                                 child: const Text(
@@ -398,13 +445,13 @@ class _MyChatsScreenState extends State<MyChatsScreen> {
                             Icon(
                               Icons.message_outlined, 
                               size: 12, 
-                              color: Colors.white.withOpacity(0.4),
+                              color: const Color(0xFF9CA3AF),
                             ),
                             const SizedBox(width: 4),
                             Text(
                               "$messageCount mensaje${messageCount == 1 ? '' : 's'}",
                               style: TextStyle(
-                                color: Colors.white.withOpacity(0.4), 
+                                color: Color(0xFF6B7280), 
                                 fontSize: 12,
                               ),
                             ),
@@ -414,7 +461,7 @@ class _MyChatsScreenState extends State<MyChatsScreen> {
                                 child: Text(
                                   "• ${chat['last_message']}",
                                   style: TextStyle(
-                                    color: Colors.white.withOpacity(0.35), 
+                                    color: Color(0xFF9CA3AF), 
                                     fontSize: 12,
                                     fontStyle: FontStyle.italic,
                                   ),
@@ -434,7 +481,7 @@ class _MyChatsScreenState extends State<MyChatsScreen> {
                     onPressed: () => _deleteChat(chat['id'], isCurrent),
                     icon: Icon(
                       Icons.delete_outline,
-                      color: Colors.white.withOpacity(0.3),
+                      color: Color(0xFF9CA3AF),
                       size: 20,
                     ),
                     padding: EdgeInsets.zero,
