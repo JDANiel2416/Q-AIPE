@@ -12,39 +12,7 @@ import 'profile_screen.dart';
 import 'orders_screen.dart';
 import 'order_detail_screen.dart';
 import 'debtors_screen.dart';
-
-// =============================================================================
-// PALETA DE COLORES - TEMA CLARO MODERNO (AZUL) - Consistente con HomeScreen
-// =============================================================================
-class AppColors {
-  // Fondos
-  static const Color background = Color(0xFFF9FAFB);
-  static const Color surface = Color(0xFFFFFFFF);
-  static const Color surfaceVariant = Color(0xFFF3F4F6);
-  
-  // Color primario (azul vibrante)
-  static const Color primary = Color(0xFF0062FF);
-  static const Color primaryLight = Color(0xFFE6F0FF);
-  static const Color primaryDark = Color(0xFF0052D6);
-  
-  // Textos
-  static const Color textPrimary = Color(0xFF111827);
-  static const Color textSecondary = Color(0xFF6B7280);
-  static const Color textMuted = Color(0xFF9CA3AF);
-  
-  // Bordes y divisores
-  static const Color border = Color(0xFFE5E7EB);
-  static const Color divider = Color(0xFFF3F4F6);
-  
-  // Estados
-  static const Color success = Color(0xFF10B981);
-  static const Color error = Color(0xFFEF4444);
-  static const Color warning = Color(0xFFF59E0B);
-  
-  // Sombras
-  static const Color shadowLight = Color(0x0A000000);
-  static const Color shadowMedium = Color(0x14000000);
-}
+import 'bodeguero_colors.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({Key? key}) : super(key: key);
@@ -103,7 +71,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       const SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
         statusBarIconBrightness: Brightness.dark,
-        systemNavigationBarColor: AppColors.background,
+        systemNavigationBarColor: Colors.transparent,
         systemNavigationBarIconBrightness: Brightness.dark,
       ),
     );
@@ -251,7 +219,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: BColors.background(context),
       body: Stack(
         children: [
           // Main content - IndexedStack para mantener estado de las pantallas
@@ -388,29 +356,29 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           width: 40,
                           height: 40,
                           decoration: BoxDecoration(
-                            color: AppColors.surface,
+                            color: BColors.surface(context),
                             shape: BoxShape.circle,
                             boxShadow: [
                               BoxShadow(
-                                color: AppColors.shadowMedium,
+                                color: BColors.shadowMedium(context),
                                 blurRadius: 10,
                                 offset: const Offset(0, 4),
                               ),
                             ],
                           ),
                           child: _isRefreshing
-                            ? const Padding(
+                            ? Padding(
                                 padding: EdgeInsets.all(10),
                                 child: CircularProgressIndicator(
                                   strokeWidth: 2.5,
-                                  color: AppColors.primary,
+                                  color: BColors.primary(context),
                                 ),
                               )
                             : Transform.rotate(
                                 angle: (_pullDistance / 10), // Rotar mientras se jala
                                 child: Icon(
                                   Icons.refresh_rounded,
-                                  color: _pullDistance > 60 ? AppColors.primary : AppColors.textMuted,
+                                  color: _pullDistance > 60 ? BColors.primary(context) : BColors.textMuted(context),
                                   size: 24,
                                 ),
                               ),
@@ -434,7 +402,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         child: Container(
           height: 80,
           decoration: BoxDecoration(
-            color: AppColors.surface.withOpacity(0.85),
+            color: BColors.surface(context).withOpacity(0.85),
             borderRadius: BorderRadius.circular(28),
             border: Border.all(
               color: Colors.white.withOpacity(0.5),
@@ -442,7 +410,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
             boxShadow: [
               BoxShadow(
-                color: AppColors.shadowMedium,
+                color: BColors.shadowMedium(context),
                 blurRadius: 24,
                 offset: const Offset(0, 8),
               ),
@@ -470,14 +438,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         child: Container(
                           decoration: BoxDecoration(
                             gradient: LinearGradient(
-                              colors: [AppColors.primary, AppColors.primaryDark],
+                              colors: [BColors.primary(context), BColors.primaryDark(context)],
                               begin: Alignment.topLeft,
                               end: Alignment.bottomRight,
                             ),
                             borderRadius: BorderRadius.circular(20),
                             boxShadow: [
                               BoxShadow(
-                                color: AppColors.primary.withOpacity(0.4),
+                                color: BColors.primary(context).withOpacity(0.4),
                                 blurRadius: 12,
                                 offset: const Offset(0, 4),
                               ),
@@ -503,7 +471,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             valueListenable: _pillPositionNotifier,
                             builder: (context, position, child) {
                               final isActive = position.round() == index;
-                              final color = isActive ? Colors.white : AppColors.textMuted;
+                              final color = isActive ? Colors.white : BColors.textMuted(context);
 
                               return Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
@@ -523,7 +491,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                           child: Container(
                                             padding: const EdgeInsets.all(4),
                                             decoration: BoxDecoration(
-                                              color: isActive ? Colors.white : AppColors.error,
+                                              color: isActive ? Colors.white : BColors.error,
                                               shape: BoxShape.circle,
                                             ),
                                             constraints: const BoxConstraints(
@@ -533,7 +501,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                             child: Text(
                                               _pendingOrdersCount > 9 ? '9+' : '$_pendingOrdersCount',
                                               style: TextStyle(
-                                                color: isActive ? AppColors.primary : Colors.white,
+                                                color: isActive ? BColors.primary(context) : Colors.white,
                                                 fontSize: 10,
                                                 fontWeight: FontWeight.bold,
                                               ),
@@ -581,14 +549,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             decoration: BoxDecoration(
               gradient: LinearGradient(
-                colors: [AppColors.primary, AppColors.primaryDark],
+                colors: [BColors.primary(context), BColors.primaryDark(context)],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
               borderRadius: BorderRadius.circular(20),
               boxShadow: [
                 BoxShadow(
-                  color: AppColors.primary.withOpacity(0.3),
+                  color: BColors.primary(context).withOpacity(0.3),
                   blurRadius: 12,
                   offset: const Offset(0, 4),
                 ),
@@ -597,11 +565,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.store, color: Colors.white, size: 18),
+                Icon(Icons.store, color: Colors.white, size: 18),
                 const SizedBox(width: 8),
                 Text(
                   _bodegaName,
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.bold,
                     fontSize: 14,
@@ -631,7 +599,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     child: Container(
                       padding: const EdgeInsets.all(4),
                       decoration: const BoxDecoration(
-                        color: AppColors.error,
+                        color: BColors.error,
                         shape: BoxShape.circle,
                       ),
                       constraints: const BoxConstraints(
@@ -640,7 +608,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ),
                       child: Text(
                         '$_pendingOrdersCount',
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: Colors.white,
                           fontSize: 10,
                           fontWeight: FontWeight.bold,
@@ -663,17 +631,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: AppColors.surface,
+          color: BColors.surface(context),
           shape: BoxShape.circle,
           boxShadow: [
             BoxShadow(
-              color: AppColors.shadowMedium,
+              color: BColors.shadowMedium(context),
               blurRadius: 12,
               offset: const Offset(0, 4),
             ),
           ],
         ),
-        child: Icon(icon, color: AppColors.primary, size: 22),
+        child: Icon(icon, color: BColors.primary(context), size: 22),
       ),
     );
   }
@@ -695,7 +663,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         Text(
           "$greeting 👋",
           style: TextStyle(
-            color: AppColors.textSecondary,
+            color: BColors.textSecondary(context),
             fontSize: 16,
           ),
         ),
@@ -703,7 +671,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         Text(
           "Panel de Control",
           style: TextStyle(
-            color: AppColors.textPrimary,
+            color: BColors.textPrimary(context),
             fontSize: 28,
             fontWeight: FontWeight.bold,
           ),
@@ -722,7 +690,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 "Ganancias Hoy",
                 _isLoading ? "..." : "S/ ${_earningsToday.toStringAsFixed(2)}",
                 Icons.attach_money,
-                AppColors.success,
+                BColors.success,
               ),
             ),
             const SizedBox(width: 16),
@@ -731,7 +699,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 "Pedidos Hoy",
                 _isLoading ? "..." : "$_ordersToday",
                 Icons.shopping_bag_outlined,
-                AppColors.primary,
+                BColors.primary(context),
               ),
             ),
           ],
@@ -757,40 +725,40 @@ class _DashboardScreenState extends State<DashboardScreen> {
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            AppColors.warning.withOpacity(0.15),
-            AppColors.warning.withOpacity(0.05),
+            BColors.warning.withOpacity(0.15),
+            BColors.warning.withOpacity(0.05),
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppColors.warning.withOpacity(0.3)),
+        border: Border.all(color: BColors.warning.withOpacity(0.3)),
       ),
       child: Row(
         children: [
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: AppColors.warning,
+              color: BColors.warning,
               borderRadius: BorderRadius.circular(14),
             ),
-            child: const Icon(Icons.account_balance_wallet_outlined, color: Colors.white, size: 26),
+            child: Icon(Icons.account_balance_wallet_outlined, color: Colors.white, size: 26),
           ),
           const SizedBox(width: 16),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text("Dinero Fiado", style: TextStyle(color: AppColors.textSecondary, fontSize: 14)),
+                Text("Dinero Fiado", style: TextStyle(color: BColors.textSecondary(context), fontSize: 14)),
                 const SizedBox(height: 4),
                 Text(
                   _isLoading ? "..." : "S/ ${_totalCredit.toStringAsFixed(2)}",
-                  style: TextStyle(color: AppColors.textPrimary, fontSize: 24, fontWeight: FontWeight.bold),
+                  style: TextStyle(color: BColors.textPrimary(context), fontSize: 24, fontWeight: FontWeight.bold),
                 ),
               ],
             ),
           ),
-          Icon(Icons.arrow_forward_ios, color: AppColors.warning, size: 20),
+          Icon(Icons.arrow_forward_ios, color: BColors.warning, size: 20),
         ],
       ),
     );
@@ -800,10 +768,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: BColors.surface(context),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppColors.border),
-        boxShadow: [BoxShadow(color: AppColors.shadowMedium, blurRadius: 12, offset: const Offset(0, 4))],
+        border: Border.all(color: BColors.border(context)),
+        boxShadow: [BoxShadow(color: BColors.shadowMedium(context), blurRadius: 12, offset: const Offset(0, 4))],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -814,9 +782,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
             child: Icon(icon, color: color, size: 24),
           ),
           const SizedBox(height: 16),
-          Text(title, style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+          Text(title, style: TextStyle(color: BColors.textSecondary(context), fontSize: 13)),
           const SizedBox(height: 4),
-          Text(value, style: TextStyle(color: AppColors.textPrimary, fontSize: 24, fontWeight: FontWeight.bold)),
+          Text(value, style: TextStyle(color: BColors.textPrimary(context), fontSize: 24, fontWeight: FontWeight.bold)),
         ],
       ),
     );
@@ -845,10 +813,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: BColors.surface(context),
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: AppColors.border),
-        boxShadow: [BoxShadow(color: AppColors.shadowMedium, blurRadius: 16, offset: const Offset(0, 8))],
+        border: Border.all(color: BColors.border(context)),
+        boxShadow: [BoxShadow(color: BColors.shadowMedium(context), blurRadius: 16, offset: const Offset(0, 8))],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -856,11 +824,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text("Ventas de la Semana", style: TextStyle(color: AppColors.textPrimary, fontSize: 18, fontWeight: FontWeight.bold)),
+              Text("Ventas de la Semana", style: TextStyle(color: BColors.textPrimary(context), fontSize: 18, fontWeight: FontWeight.bold)),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(color: AppColors.primaryLight, borderRadius: BorderRadius.circular(8)),
-                child: Text("Esta semana", style: TextStyle(color: AppColors.primary, fontSize: 12, fontWeight: FontWeight.w600)),
+                decoration: BoxDecoration(color: BColors.primaryLight(context), borderRadius: BorderRadius.circular(8)),
+                child: Text("Esta semana", style: TextStyle(color: BColors.primary(context), fontSize: 12, fontWeight: FontWeight.w600)),
               ),
             ],
           ),
@@ -869,27 +837,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
             height: 200,
             child: LineChart(
               LineChartData(
-                gridData: FlGridData(show: true, drawVerticalLine: false, horizontalInterval: interval, getDrawingHorizontalLine: (value) => FlLine(color: AppColors.divider, strokeWidth: 1)),
+                gridData: FlGridData(show: true, drawVerticalLine: false, horizontalInterval: interval, getDrawingHorizontalLine: (value) => FlLine(color: BColors.divider(context), strokeWidth: 1)),
                 titlesData: FlTitlesData(
                   show: true,
                   rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
                   topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
                   bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 30, interval: 1, getTitlesWidget: (value, meta) {
                     final idx = value.toInt();
-                    if (idx >= 0 && idx < days.length) return Padding(padding: const EdgeInsets.only(top: 8), child: Text(days[idx], style: TextStyle(color: AppColors.textMuted, fontSize: 12)));
-                    return const Text('');
+                    if (idx >= 0 && idx < days.length) return Padding(padding: const EdgeInsets.only(top: 8), child: Text(days[idx], style: TextStyle(color: BColors.textMuted(context), fontSize: 12)));
+                    return Text('');
                   })),
-                  leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, interval: interval, reservedSize: 50, getTitlesWidget: (value, meta) => Text('S/${value.toInt()}', style: TextStyle(color: AppColors.textMuted, fontSize: 10)))),
+                  leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, interval: interval, reservedSize: 50, getTitlesWidget: (value, meta) => Text('S/${value.toInt()}', style: TextStyle(color: BColors.textMuted(context), fontSize: 10)))),
                 ),
                 borderData: FlBorderData(show: false),
                 minX: 0, maxX: 6, minY: 0, maxY: maxY,
                 lineBarsData: [
                   LineChartBarData(
                     spots: spots, isCurved: true,
-                    gradient: LinearGradient(colors: [AppColors.primary, AppColors.primaryDark]),
+                    gradient: LinearGradient(colors: [BColors.primary(context), BColors.primaryDark(context)]),
                     barWidth: 3, isStrokeCapRound: true,
-                    dotData: FlDotData(show: true, getDotPainter: (spot, percent, barData, index) => FlDotCirclePainter(radius: 4, color: AppColors.surface, strokeWidth: 2, strokeColor: AppColors.primary)),
-                    belowBarData: BarAreaData(show: true, gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [AppColors.primary.withOpacity(0.2), AppColors.primary.withOpacity(0.0)])),
+                    dotData: FlDotData(show: true, getDotPainter: (spot, percent, barData, index) => FlDotCirclePainter(radius: 4, color: BColors.surface(context), strokeWidth: 2, strokeColor: BColors.primary(context))),
+                    belowBarData: BarAreaData(show: true, gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [BColors.primary(context).withOpacity(0.2), BColors.primary(context).withOpacity(0.0)])),
                   ),
                 ],
               ),
@@ -898,9 +866,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
           const SizedBox(height: 20),
           Row(
             children: [
-              if (_bestSellingProduct != null) Expanded(child: _buildProductTag("Más vendido", _bestSellingProduct!, AppColors.success)),
+              if (_bestSellingProduct != null) Expanded(child: _buildProductTag("Más vendido", _bestSellingProduct!, BColors.success)),
               if (_bestSellingProduct != null && _leastSellingProduct != null) const SizedBox(width: 12),
-              if (_leastSellingProduct != null) Expanded(child: _buildProductTag("Menos vendido", _leastSellingProduct!, AppColors.warning)),
+              if (_leastSellingProduct != null) Expanded(child: _buildProductTag("Menos vendido", _leastSellingProduct!, BColors.warning)),
             ],
           ),
         ],
@@ -917,7 +885,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         children: [
           Text(label, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w600)),
           const SizedBox(height: 4),
-          Text(product, style: TextStyle(color: AppColors.textPrimary, fontSize: 13, fontWeight: FontWeight.w500), maxLines: 1, overflow: TextOverflow.ellipsis),
+          Text(product, style: TextStyle(color: BColors.textPrimary(context), fontSize: 13, fontWeight: FontWeight.w500), maxLines: 1, overflow: TextOverflow.ellipsis),
         ],
       ),
     );
@@ -927,13 +895,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text("Acciones Rápidas", style: TextStyle(color: AppColors.textPrimary, fontSize: 18, fontWeight: FontWeight.bold)),
+        Text("Acciones Rápidas", style: TextStyle(color: BColors.textPrimary(context), fontSize: 18, fontWeight: FontWeight.bold)),
         const SizedBox(height: 16),
         Row(
           children: [
-            Expanded(child: _buildActionCard("Gestionar Productos", "Ver inventario", Icons.inventory_2_outlined, AppColors.primary, () => _onNavItemTapped(1))),
+            Expanded(child: _buildActionCard("Gestionar Productos", "Ver inventario", Icons.inventory_2_outlined, BColors.primary(context), () => _onNavItemTapped(1))),
             const SizedBox(width: 16),
-            Expanded(child: _buildActionCard("Ver Pedidos", "$_pendingOrdersCount activos", Icons.receipt_long_outlined, AppColors.warning, () => _onNavItemTapped(2))),
+            Expanded(child: _buildActionCard("Ver Pedidos", "$_pendingOrdersCount activos", Icons.receipt_long_outlined, BColors.warning, () => _onNavItemTapped(2))),
           ],
         ),
       ],
@@ -955,9 +923,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
           children: [
             Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(12)), child: Icon(icon, color: Colors.white, size: 24)),
             const SizedBox(height: 16),
-            Text(title, style: TextStyle(color: AppColors.textPrimary, fontSize: 15, fontWeight: FontWeight.bold)),
+            Text(title, style: TextStyle(color: BColors.textPrimary(context), fontSize: 15, fontWeight: FontWeight.bold)),
             const SizedBox(height: 4),
-            Text(subtitle, style: TextStyle(color: AppColors.textSecondary, fontSize: 11)),
+            Text(subtitle, style: TextStyle(color: BColors.textSecondary(context), fontSize: 11)),
           ],
         ),
       ),
@@ -978,7 +946,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   onTap: () {},
                   child: Container(
                     padding: const EdgeInsets.symmetric(vertical: 16),
-                    decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(16), boxShadow: [BoxShadow(color: AppColors.shadowMedium, blurRadius: 16, offset: const Offset(0, 4))]),
+                    decoration: BoxDecoration(color: BColors.surface(context), borderRadius: BorderRadius.circular(16), boxShadow: [BoxShadow(color: BColors.shadowMedium(context), blurRadius: 16, offset: const Offset(0, 4))]),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
@@ -988,36 +956,36 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              const Text("Notificaciones", style: TextStyle(color: AppColors.textPrimary, fontSize: 16, fontWeight: FontWeight.bold)),
+                              Text("Notificaciones", style: TextStyle(color: BColors.textPrimary(context), fontSize: 16, fontWeight: FontWeight.bold)),
                               if (_pendingOrdersCount > 0)
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                  decoration: BoxDecoration(color: AppColors.primaryLight, borderRadius: BorderRadius.circular(10)),
-                                  child: Text("$_pendingOrdersCount nuevas", style: const TextStyle(color: AppColors.primary, fontSize: 10, fontWeight: FontWeight.bold)),
+                                  decoration: BoxDecoration(color: BColors.primaryLight(context), borderRadius: BorderRadius.circular(10)),
+                                  child: Text("$_pendingOrdersCount nuevas", style: TextStyle(color: BColors.primary(context), fontSize: 10, fontWeight: FontWeight.bold)),
                                 ),
                             ],
                           ),
                         ),
                         const SizedBox(height: 12),
-                        const Divider(height: 1),
+                        Divider(height: 1),
                         if (_pendingOrders.isEmpty)
-                          const Padding(padding: EdgeInsets.all(30), child: Center(child: Text("No tienes notificaciones pendientes", style: TextStyle(color: AppColors.textMuted, fontSize: 13), textAlign: TextAlign.center)))
+                          Padding(padding: EdgeInsets.all(30), child: Center(child: Text("No tienes notificaciones pendientes", style: TextStyle(color: BColors.textMuted(context), fontSize: 13), textAlign: TextAlign.center)))
                         else
                           ConstrainedBox(
                             constraints: const BoxConstraints(maxHeight: 300),
                             child: ListView.separated(
                               shrinkWrap: true, padding: EdgeInsets.zero,
                               itemCount: _pendingOrders.length,
-                              separatorBuilder: (c, i) => const Divider(height: 1),
+                              separatorBuilder: (c, i) => Divider(height: 1),
                               itemBuilder: (context, index) {
                                 final order = _pendingOrders[index];
                                 return ListTile(
                                   contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                                  leading: Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: AppColors.primaryLight, shape: BoxShape.circle), child: const Icon(Icons.shopping_bag, color: AppColors.primary, size: 20)),
-                                  title: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text("Nuevo Pedido", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)), Text(order['time_ago'] ?? '', style: TextStyle(color: AppColors.textMuted, fontSize: 10))]),
+                                  leading: Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: BColors.primaryLight(context), shape: BoxShape.circle), child: Icon(Icons.shopping_bag, color: BColors.primary(context), size: 20)),
+                                  title: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text("Nuevo Pedido", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)), Text(order['time_ago'] ?? '', style: TextStyle(color: BColors.textMuted(context), fontSize: 10))]),
                                   subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                    Padding(padding: const EdgeInsets.symmetric(vertical: 4), child: Text(order['items_summary'] ?? '', style: const TextStyle(fontSize: 12), maxLines: 2, overflow: TextOverflow.ellipsis)),
-                                    Text("Total: S/ ${(order['total_amount'] ?? 0.0).toDouble().toStringAsFixed(2)}", style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold, fontSize: 12)),
+                                    Padding(padding: const EdgeInsets.symmetric(vertical: 4), child: Text(order['items_summary'] ?? '', style: TextStyle(fontSize: 12), maxLines: 2, overflow: TextOverflow.ellipsis)),
+                                    Text("Total: S/ ${(order['total_amount'] ?? 0.0).toDouble().toStringAsFixed(2)}", style: TextStyle(color: BColors.primary(context), fontWeight: FontWeight.bold, fontSize: 12)),
                                   ]),
                                   onTap: () {
                                     setState(() => _showNotifications = false);
@@ -1027,12 +995,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               },
                             ),
                           ),
-                        const Divider(height: 1),
+                        Divider(height: 1),
                         Padding(
                           padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
                           child: GestureDetector(
                             onTap: () { setState(() => _showNotifications = false); _onNavItemTapped(2); },
-                            child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [Text("Ver todos los pedidos", style: TextStyle(color: AppColors.primary, fontSize: 13, fontWeight: FontWeight.w600)), SizedBox(width: 4), Icon(Icons.arrow_forward_rounded, color: AppColors.primary, size: 14)]),
+                            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [Text("Ver todos los pedidos", style: TextStyle(color: BColors.primary(context), fontSize: 13, fontWeight: FontWeight.w600)), SizedBox(width: 4), Icon(Icons.arrow_forward_rounded, color: BColors.primary(context), size: 14)]),
                           ),
                         ),
                       ],

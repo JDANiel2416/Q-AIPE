@@ -6,27 +6,7 @@ import '../../services/api_service.dart';
 import '../../services/session_service.dart';
 import 'order_detail_screen.dart';
 
-// =============================================================================
-// PALETA DE COLORES - TEMA CLARO MODERNO
-// =============================================================================
-class AppColors {
-  static const Color background = Color(0xFFF9FAFB);
-  static const Color surface = Color(0xFFFFFFFF);
-  static const Color surfaceVariant = Color(0xFFF3F4F6);
-  static const Color primary = Color(0xFF0062FF);
-  static const Color primaryLight = Color(0xFFE6F0FF);
-  static const Color primaryDark = Color(0xFF0052D6);
-  static const Color textPrimary = Color(0xFF111827);
-  static const Color textSecondary = Color(0xFF6B7280);
-  static const Color textMuted = Color(0xFF9CA3AF);
-  static const Color border = Color(0xFFE5E7EB);
-  static const Color divider = Color(0xFFF3F4F6);
-  static const Color success = Color(0xFF10B981);
-  static const Color error = Color(0xFFEF4444);
-  static const Color warning = Color(0xFFF59E0B);
-  static const Color shadowLight = Color(0x0A000000);
-  static const Color shadowMedium = Color(0x14000000);
-}
+import 'bodeguero_colors.dart';
 
 class OrdersScreen extends StatefulWidget {
   final bool isEmbedded;
@@ -61,7 +41,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
       const SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
         statusBarIconBrightness: Brightness.dark,
-        systemNavigationBarColor: AppColors.background,
+        systemNavigationBarColor: Colors.transparent,
         systemNavigationBarIconBrightness: Brightness.dark,
       ),
     );
@@ -125,11 +105,11 @@ class _OrdersScreenState extends State<OrdersScreen> {
 
   Color _getStatusColor(String status) {
     switch (status) {
-      case 'PENDING': return AppColors.warning;
-      case 'PAID': return AppColors.success;
-      case 'CREDIT': return AppColors.primary;
-      case 'CANCELLED': return AppColors.error;
-      default: return AppColors.textMuted;
+      case 'PENDING': return BColors.warning;
+      case 'PAID': return BColors.success;
+      case 'CREDIT': return BColors.primary(context);
+      case 'CANCELLED': return BColors.error;
+      default: return BColors.textMuted(context);
     }
   }
 
@@ -146,7 +126,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: BColors.background(context),
       body: SafeArea(
         child: Column(
           children: [
@@ -154,7 +134,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
             if (!_isLoading) _buildGlassCategoryBar(),
             Expanded(
               child: _isLoading
-                  ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+                  ? Center(child: CircularProgressIndicator(color: BColors.primary(context)))
                   : PageView(
                       controller: _pageController,
                       children: _tabs.map((tab) {
@@ -180,10 +160,10 @@ class _OrdersScreenState extends State<OrdersScreen> {
               child: Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: AppColors.primaryLight.withOpacity(0.7),
+                  color: BColors.primaryLight(context).withOpacity(0.7),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.arrow_back_ios_new, color: AppColors.primary, size: 18),
+                child: Icon(Icons.arrow_back_ios_new, color: BColors.primary(context), size: 18),
               ),
             ),
             const SizedBox(width: 16),
@@ -192,35 +172,35 @@ class _OrdersScreenState extends State<OrdersScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   "Pedidos",
                   style: TextStyle(
-                    color: AppColors.textPrimary,
+                    color: BColors.textPrimary(context),
                     fontWeight: FontWeight.bold,
                     fontSize: 22,
                   ),
                 ),
                 Text(
                   "${_orders.length} pedidos totales",
-                  style: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
+                  style: TextStyle(color: BColors.textSecondary(context), fontSize: 13),
                 ),
               ],
             ),
           ),
           Container(
             decoration: BoxDecoration(
-              color: AppColors.surface,
+              color: BColors.surface(context),
               shape: BoxShape.circle,
-              boxShadow: const [
+              boxShadow: [
                 BoxShadow(
-                  color: AppColors.shadowLight,
+                  color: BColors.shadowLight(context),
                   blurRadius: 10,
                   offset: Offset(0, 4),
                 ),
               ],
             ),
             child: IconButton(
-              icon: const Icon(Icons.refresh, color: AppColors.primary),
+              icon: Icon(Icons.refresh, color: BColors.primary(context)),
               onPressed: _loadOrders,
             ),
           ),
@@ -234,11 +214,11 @@ class _OrdersScreenState extends State<OrdersScreen> {
       height: 70,
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: AppColors.surface.withOpacity(0.6),
+        color: BColors.surface(context).withOpacity(0.6),
         borderRadius: BorderRadius.circular(35),
         boxShadow: [
           BoxShadow(
-            color: AppColors.shadowMedium,
+            color: BColors.shadowMedium(context),
             blurRadius: 16,
             offset: const Offset(0, 8),
           ),
@@ -310,15 +290,15 @@ class _OrdersScreenState extends State<OrdersScreen> {
                             width: itemWidth,
                             child: Container(
                               decoration: BoxDecoration(
-                                gradient: const LinearGradient(
-                                  colors: [AppColors.primary, AppColors.primaryDark],
+                                gradient: LinearGradient(
+                                  colors: [BColors.primary(context), BColors.primaryDark(context)],
                                   begin: Alignment.topLeft,
                                   end: Alignment.bottomRight,
                                 ),
                                 borderRadius: BorderRadius.circular(30),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: AppColors.primary.withOpacity(0.4),
+                                    color: BColors.primary(context).withOpacity(0.4),
                                     blurRadius: 12,
                                     offset: const Offset(0, 4),
                                   ),
@@ -350,7 +330,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
                                 valueListenable: _pillPositionNotifier,
                                 builder: (context, position, child) {
                                   final isActive = position.round() == index;
-                                  final color = isActive ? Colors.white : AppColors.textSecondary;
+                                  final color = isActive ? Colors.white : BColors.textSecondary(context);
 
                                   return Column(
                                     mainAxisAlignment: MainAxisAlignment.center,
@@ -368,7 +348,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
                                             Container(
                                               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                               decoration: BoxDecoration(
-                                                color: isActive ? Colors.white.withOpacity(0.2) : AppColors.warning,
+                                                color: isActive ? Colors.white.withOpacity(0.2) : BColors.warning,
                                                 borderRadius: BorderRadius.circular(10),
                                               ),
                                               child: Text(
@@ -422,7 +402,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
 
     return RefreshIndicator(
       onRefresh: _loadOrders,
-      color: AppColors.primary,
+      color: BColors.primary(context),
       child: ListView.builder(
         padding: EdgeInsets.only(
           left: 20,
@@ -459,16 +439,16 @@ class _OrdersScreenState extends State<OrdersScreen> {
         margin: const EdgeInsets.only(bottom: 16),
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: AppColors.surface,
+          color: BColors.surface(context),
           borderRadius: BorderRadius.circular(20),
-          boxShadow: const [
+          boxShadow: [
             BoxShadow(
-              color: AppColors.shadowMedium,
+              color: BColors.shadowMedium(context),
               blurRadius: 16,
               offset: Offset(0, 8),
             ),
           ],
-          border: Border.all(color: AppColors.border, width: 0.5),
+          border: Border.all(color: BColors.border(context), width: 0.5),
         ),
         child: Column(
           children: [
@@ -478,10 +458,10 @@ class _OrdersScreenState extends State<OrdersScreen> {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: AppColors.primaryLight,
+                    color: BColors.primaryLight(context),
                     borderRadius: BorderRadius.circular(14),
                   ),
-                  child: const Icon(Icons.person_outline, color: AppColors.primary, size: 24),
+                  child: Icon(Icons.person_outline, color: BColors.primary(context), size: 24),
                 ),
                 const SizedBox(width: 16),
                 Expanded(
@@ -490,8 +470,8 @@ class _OrdersScreenState extends State<OrdersScreen> {
                     children: [
                       Text(
                         order['client_name'],
-                        style: const TextStyle(
-                          color: AppColors.textPrimary,
+                        style: TextStyle(
+                          color: BColors.textPrimary(context),
                           fontWeight: FontWeight.bold,
                           fontSize: 16,
                         ),
@@ -499,12 +479,12 @@ class _OrdersScreenState extends State<OrdersScreen> {
                       const SizedBox(height: 4),
                       Row(
                         children: [
-                          const Icon(Icons.access_time, size: 12, color: AppColors.textSecondary),
+                          Icon(Icons.access_time, size: 12, color: BColors.textSecondary(context)),
                           const SizedBox(width: 4),
                           Text(
                             formattedDate,
-                            style: const TextStyle(
-                              color: AppColors.textSecondary,
+                            style: TextStyle(
+                              color: BColors.textSecondary(context),
                               fontSize: 12,
                             ),
                           ),
@@ -532,22 +512,22 @@ class _OrdersScreenState extends State<OrdersScreen> {
               ],
             ),
             const SizedBox(height: 16),
-            const Divider(height: 1, color: AppColors.divider),
+            Divider(height: 1, color: BColors.divider(context)),
             const SizedBox(height: 16),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
                   "${(order['items'] as List).length} items",
-                  style: const TextStyle(
-                    color: AppColors.textSecondary,
+                  style: TextStyle(
+                    color: BColors.textSecondary(context),
                     fontWeight: FontWeight.w500,
                   ),
                 ),
                 Text(
                   "S/ ${order['total_amount'].toStringAsFixed(2)}",
-                  style: const TextStyle(
-                    color: AppColors.textPrimary,
+                  style: TextStyle(
+                    color: BColors.textPrimary(context),
                     fontWeight: FontWeight.bold,
                     fontSize: 18,
                   ),
@@ -570,12 +550,12 @@ class _OrdersScreenState extends State<OrdersScreen> {
             width: 100,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: AppColors.primaryLight,
+              color: BColors.primaryLight(context),
             ),
             child: Icon(
               filter == 'PENDING' ? Icons.pending_actions_outlined : Icons.history_outlined,
               size: 50,
-              color: AppColors.primary,
+              color: BColors.primary(context),
             ),
           ),
           const SizedBox(height: 24),
@@ -583,8 +563,8 @@ class _OrdersScreenState extends State<OrdersScreen> {
             filter == 'PENDING' 
                 ? "No hay pedidos pendientes"
                 : "No hay pedidos en el historial",
-            style: const TextStyle(
-              color: AppColors.textPrimary,
+            style: TextStyle(
+              color: BColors.textPrimary(context),
               fontSize: 18,
               fontWeight: FontWeight.bold,
             ),
@@ -594,7 +574,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
             filter == 'PENDING'
                 ? "¡Los pedidos nuevos aparecerán aquí!"
                 : "Los pedidos completados se mostrarán aquí",
-            style: const TextStyle(color: AppColors.textSecondary, fontSize: 14),
+            style: TextStyle(color: BColors.textSecondary(context), fontSize: 14),
           ),
         ],
       ),

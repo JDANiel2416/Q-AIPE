@@ -6,6 +6,7 @@ import 'screens/common/login_screen.dart';
 import 'screens/common/splash_screen.dart';
 import 'screens/bodeguero/order_detail_screen.dart';
 import 'services/push_notification_service.dart';
+import 'services/theme_provider.dart';
 import 'theme/app_theme.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
@@ -91,6 +92,9 @@ void main() async {
     print("🔴 ERROR CRÍTICO EN INICIALIZACIÓN: $e");
   }
   
+  // Inicializar ThemeProvider
+  await ThemeProvider().init();
+  
   runApp(const MyApp());
 }
 
@@ -99,15 +103,19 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Chek',
-      debugShowCheckedModeBanner: false,
-      navigatorKey: navigatorKey, // Asignar GlobalKey
-      theme: AppTheme.lightTheme,
-      darkTheme: AppTheme.darkTheme,
-      themeMode: ThemeMode.light,
-      
-      home: SplashScreen(),
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: ThemeProvider().themeMode,
+      builder: (context, themeMode, child) {
+        return MaterialApp(
+          title: 'Chek',
+          debugShowCheckedModeBanner: false,
+          navigatorKey: navigatorKey,
+          theme: AppTheme.lightTheme,
+          darkTheme: AppTheme.darkTheme,
+          themeMode: themeMode,
+          home: SplashScreen(),
+        );
+      },
     );
   }
 }

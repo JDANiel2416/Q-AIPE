@@ -8,27 +8,7 @@ import '../common/login_screen.dart';
 import 'add_product_screen.dart';
 import 'edit_product_screen.dart';
 
-// =============================================================================
-// PALETA DE COLORES - TEMA CLARO MODERNO
-// =============================================================================
-class AppColors {
-  static const Color background = Color(0xFFF9FAFB);
-  static const Color surface = Color(0xFFFFFFFF);
-  static const Color surfaceVariant = Color(0xFFF3F4F6);
-  static const Color primary = Color(0xFF0062FF);
-  static const Color primaryLight = Color(0xFFE6F0FF);
-  static const Color primaryDark = Color(0xFF0052D6);
-  static const Color textPrimary = Color(0xFF111827);
-  static const Color textSecondary = Color(0xFF6B7280);
-  static const Color textMuted = Color(0xFF9CA3AF);
-  static const Color border = Color(0xFFE5E7EB);
-  static const Color divider = Color(0xFFF3F4F6);
-  static const Color success = Color(0xFF10B981);
-  static const Color error = Color(0xFFEF4444);
-  static const Color warning = Color(0xFFF59E0B);
-  static const Color shadowLight = Color(0x0A000000);
-  static const Color shadowMedium = Color(0x14000000);
-}
+import 'bodeguero_colors.dart';
 
 class BodegueroScreen extends StatefulWidget {
   final bool isEmbedded;
@@ -80,7 +60,7 @@ class _BodegueroScreenState extends State<BodegueroScreen> with SingleTickerProv
       const SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
         statusBarIconBrightness: Brightness.dark,
-        systemNavigationBarColor: AppColors.background,
+        systemNavigationBarColor: Colors.transparent,
         systemNavigationBarIconBrightness: Brightness.dark,
       ),
     );
@@ -173,8 +153,8 @@ class _BodegueroScreenState extends State<BodegueroScreen> with SingleTickerProv
       if(mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Text("Error de conexión"),
-            backgroundColor: AppColors.error,
+            content: Text("Error de conexión"),
+            backgroundColor: BColors.error,
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           )
@@ -197,7 +177,7 @@ class _BodegueroScreenState extends State<BodegueroScreen> with SingleTickerProv
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: BColors.background(context),
       body: SafeArea(
         child: Column(
           children: [
@@ -219,9 +199,9 @@ class _BodegueroScreenState extends State<BodegueroScreen> with SingleTickerProv
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          CircularProgressIndicator(color: AppColors.primary),
+                          CircularProgressIndicator(color: BColors.primary(context)),
                           const SizedBox(height: 16),
-                          Text("Cargando productos...", style: TextStyle(color: AppColors.textSecondary)),
+                          Text("Cargando productos...", style: TextStyle(color: BColors.textSecondary(context))),
                         ],
                       ),
                     )
@@ -240,12 +220,12 @@ class _BodegueroScreenState extends State<BodegueroScreen> with SingleTickerProv
         child: Container(
           decoration: BoxDecoration(
             gradient: LinearGradient(
-              colors: [AppColors.primary, AppColors.primaryDark],
+              colors: [BColors.primary(context), BColors.primaryDark(context)],
             ),
             borderRadius: BorderRadius.circular(16),
             boxShadow: [
               BoxShadow(
-                color: AppColors.primary.withOpacity(0.4),
+                color: BColors.primary(context).withOpacity(0.4),
                 blurRadius: 12,
                 offset: const Offset(0, 4),
               ),
@@ -253,8 +233,8 @@ class _BodegueroScreenState extends State<BodegueroScreen> with SingleTickerProv
           ),
           child: FloatingActionButton.extended(
             onPressed: _navigateToAddProduct,
-            label: const Text("Agregar", style: TextStyle(fontWeight: FontWeight.bold)),
-            icon: const Icon(Icons.add),
+            label: Text("Agregar", style: TextStyle(fontWeight: FontWeight.bold)),
+            icon: Icon(Icons.add),
             backgroundColor: Colors.transparent,
             foregroundColor: Colors.white,
             elevation: 0,
@@ -277,10 +257,10 @@ class _BodegueroScreenState extends State<BodegueroScreen> with SingleTickerProv
               child: Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: AppColors.primaryLight.withOpacity(0.7),
+                  color: BColors.primaryLight(context).withOpacity(0.7),
                   shape: BoxShape.circle,
                 ),
-                child: Icon(Icons.arrow_back_ios_new, color: AppColors.primary, size: 18),
+                child: Icon(Icons.arrow_back_ios_new, color: BColors.primary(context), size: 18),
               ),
             ),
             const SizedBox(width: 16),
@@ -294,14 +274,14 @@ class _BodegueroScreenState extends State<BodegueroScreen> with SingleTickerProv
                 Text(
                   "Mi Inventario",
                   style: TextStyle(
-                    color: AppColors.textPrimary,
+                    color: BColors.textPrimary(context),
                     fontWeight: FontWeight.bold,
                     fontSize: 22,
                   ),
                 ),
                 Text(
                   "${_products.length} productos",
-                  style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+                  style: TextStyle(color: BColors.textSecondary(context), fontSize: 13),
                 ),
               ],
             ),
@@ -311,10 +291,10 @@ class _BodegueroScreenState extends State<BodegueroScreen> with SingleTickerProv
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: AppColors.primaryLight,
+              color: BColors.primaryLight(context),
               shape: BoxShape.circle,
             ),
-            child: Icon(Icons.inventory_2_outlined, color: AppColors.primary, size: 20),
+            child: Icon(Icons.inventory_2_outlined, color: BColors.primary(context), size: 20),
           ),
         ],
       ),
@@ -326,11 +306,11 @@ class _BodegueroScreenState extends State<BodegueroScreen> with SingleTickerProv
       height: 70,
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: AppColors.surface.withOpacity(0.6),
+        color: BColors.surface(context).withOpacity(0.6),
         borderRadius: BorderRadius.circular(35),
         boxShadow: [
           BoxShadow(
-            color: AppColors.shadowMedium,
+            color: BColors.shadowMedium(context),
             blurRadius: 16,
             offset: const Offset(0, 8),
           ),
@@ -413,15 +393,15 @@ class _BodegueroScreenState extends State<BodegueroScreen> with SingleTickerProv
                             width: itemWidth,
                             child: Container(
                               decoration: BoxDecoration(
-                                gradient: const LinearGradient(
-                                  colors: [AppColors.primary, AppColors.primaryDark],
+                                gradient: LinearGradient(
+                                  colors: [BColors.primary(context), BColors.primaryDark(context)],
                                   begin: Alignment.topLeft,
                                   end: Alignment.bottomRight,
                                 ),
                                 borderRadius: BorderRadius.circular(30),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: AppColors.primary.withOpacity(0.4),
+                                    color: BColors.primary(context).withOpacity(0.4),
                                     blurRadius: 12,
                                     offset: const Offset(0, 4),
                                   ),
@@ -458,7 +438,7 @@ class _BodegueroScreenState extends State<BodegueroScreen> with SingleTickerProv
                                   // Lógica de resaltado: cuando más del 50% de la píldora está encima (redondeo)
                                   final isActive = position.round() == index;
                                   final opacity = isActive ? 1.0 : 0.7;
-                                  final color = isActive ? Colors.white : AppColors.textSecondary;
+                                  final color = isActive ? Colors.white : BColors.textSecondary(context);
 
                                   return Column(
                                     mainAxisAlignment: MainAxisAlignment.center,
@@ -503,12 +483,12 @@ class _BodegueroScreenState extends State<BodegueroScreen> with SingleTickerProv
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Container(
         decoration: BoxDecoration(
-          color: AppColors.surface,
+          color: BColors.surface(context),
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.border),
+          border: Border.all(color: BColors.border(context)),
           boxShadow: [
             BoxShadow(
-              color: AppColors.shadowLight,
+              color: BColors.shadowLight(context),
               blurRadius: 8,
               offset: const Offset(0, 2),
             ),
@@ -517,14 +497,14 @@ class _BodegueroScreenState extends State<BodegueroScreen> with SingleTickerProv
         child: TextField(
           controller: _searchCtrl,
           onChanged: (val) => setState(() => _searchQuery = val),
-          style: TextStyle(color: AppColors.textPrimary),
+          style: TextStyle(color: BColors.textPrimary(context)),
           decoration: InputDecoration(
             hintText: "Buscar en ${_categories[_currentTabIndex]['name']}...",
-            hintStyle: TextStyle(color: AppColors.textMuted),
-            prefixIcon: Icon(Icons.search, color: AppColors.primary),
+            hintStyle: TextStyle(color: BColors.textMuted(context)),
+            prefixIcon: Icon(Icons.search, color: BColors.primary(context)),
             suffixIcon: _searchQuery.isNotEmpty
                 ? IconButton(
-                    icon: Icon(Icons.clear, color: AppColors.textMuted, size: 20),
+                    icon: Icon(Icons.clear, color: BColors.textMuted(context), size: 20),
                     onPressed: () {
                       _searchCtrl.clear();
                       setState(() => _searchQuery = "");
@@ -557,9 +537,9 @@ class _BodegueroScreenState extends State<BodegueroScreen> with SingleTickerProv
               width: 100,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: AppColors.primaryLight,
+                color: BColors.primaryLight(context),
               ),
-              child: Icon(Icons.inventory_2_outlined, size: 50, color: AppColors.primary),
+              child: Icon(Icons.inventory_2_outlined, size: 50, color: BColors.primary(context)),
             ),
             const SizedBox(height: 24),
             Text(
@@ -567,7 +547,7 @@ class _BodegueroScreenState extends State<BodegueroScreen> with SingleTickerProv
                   ? "No tienes productos en $category"
                   : "No se encontraron productos",
               style: TextStyle(
-                color: AppColors.textPrimary, 
+                color: BColors.textPrimary(context), 
                 fontSize: 18, 
                 fontWeight: FontWeight.bold,
               ),
@@ -577,16 +557,16 @@ class _BodegueroScreenState extends State<BodegueroScreen> with SingleTickerProv
               _searchQuery.isEmpty
                   ? "¡Agrega tu primer producto!"
                   : "Intenta con otra búsqueda",
-              style: TextStyle(color: AppColors.textSecondary, fontSize: 14),
+              style: TextStyle(color: BColors.textSecondary(context), fontSize: 14),
             ),
             if (_searchQuery.isEmpty) ...[
               const SizedBox(height: 24),
               ElevatedButton.icon(
                 onPressed: _navigateToAddProduct,
-                icon: const Icon(Icons.add),
-                label: const Text("Agregar Producto"),
+                icon: Icon(Icons.add),
+                label: Text("Agregar Producto"),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primary,
+                  backgroundColor: BColors.primary(context),
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
@@ -625,14 +605,14 @@ class _BodegueroScreenState extends State<BodegueroScreen> with SingleTickerProv
           child: Container(
             margin: const EdgeInsets.only(bottom: 12),
             decoration: BoxDecoration(
-              color: AppColors.surface,
+              color: BColors.surface(context),
               borderRadius: BorderRadius.circular(18),
               border: Border.all(
-                color: inStock ? AppColors.border : AppColors.textMuted.withOpacity(0.3),
+                color: inStock ? BColors.border(context) : BColors.textMuted(context).withOpacity(0.3),
               ),
               boxShadow: [
                 BoxShadow(
-                  color: AppColors.shadowMedium,
+                  color: BColors.shadowMedium(context),
                   blurRadius: 10,
                   offset: const Offset(0, 3),
                 ),
@@ -648,15 +628,15 @@ class _BodegueroScreenState extends State<BodegueroScreen> with SingleTickerProv
                     decoration: BoxDecoration(
                       gradient: inStock 
                           ? LinearGradient(
-                              colors: [AppColors.success.withOpacity(0.15), AppColors.success.withOpacity(0.05)],
+                              colors: [BColors.success.withOpacity(0.15), BColors.success.withOpacity(0.05)],
                             )
                           : null,
-                      color: inStock ? null : AppColors.surfaceVariant,
+                      color: inStock ? null : BColors.surfaceVariant(context),
                       borderRadius: BorderRadius.circular(14),
                     ),
                     child: Icon(
                       inStock ? Icons.check_circle : Icons.pause_circle_outline,
-                      color: inStock ? AppColors.success : AppColors.textMuted,
+                      color: inStock ? BColors.success : BColors.textMuted(context),
                       size: 26,
                     ),
                   ),
@@ -670,7 +650,7 @@ class _BodegueroScreenState extends State<BodegueroScreen> with SingleTickerProv
                         Text(
                           prod['name'],
                           style: TextStyle(
-                            color: AppColors.textPrimary,
+                            color: BColors.textPrimary(context),
                             fontWeight: FontWeight.bold,
                             fontSize: 15,
                           ),
@@ -683,25 +663,25 @@ class _BodegueroScreenState extends State<BodegueroScreen> with SingleTickerProv
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                               decoration: BoxDecoration(
-                                color: AppColors.primaryLight,
+                                color: BColors.primaryLight(context),
                                 borderRadius: BorderRadius.circular(8),
                               ),
                               child: Text(
                                 "S/ ${prod['price'].toStringAsFixed(2)}",
                                 style: TextStyle(
-                                  color: AppColors.primary,
+                                  color: BColors.primary(context),
                                   fontWeight: FontWeight.bold,
                                   fontSize: 13,
                                 ),
                               ),
                             ),
                             const SizedBox(width: 10),
-                            Icon(Icons.inventory_2_outlined, size: 14, color: AppColors.textMuted),
+                            Icon(Icons.inventory_2_outlined, size: 14, color: BColors.textMuted(context)),
                             const SizedBox(width: 4),
                             Text(
                               "${prod['stock']} uds",
                               style: TextStyle(
-                                color: AppColors.textSecondary,
+                                color: BColors.textSecondary(context),
                                 fontSize: 12,
                               ),
                             ),
@@ -719,17 +699,17 @@ class _BodegueroScreenState extends State<BodegueroScreen> with SingleTickerProv
                         child: Switch(
                           value: inStock,
                           onChanged: (val) => _toggleProduct(prod, val),
-                          activeColor: AppColors.success,
-                          activeTrackColor: AppColors.success.withOpacity(0.3),
-                          inactiveThumbColor: AppColors.textMuted,
-                          inactiveTrackColor: AppColors.surfaceVariant,
+                          activeColor: BColors.success,
+                          activeTrackColor: BColors.success.withOpacity(0.3),
+                          inactiveThumbColor: BColors.textMuted(context),
+                          inactiveTrackColor: BColors.surfaceVariant(context),
                         ),
                       ),
                       Text(
                         inStock ? "En stock" : "Pausado",
                         style: TextStyle(
                           fontSize: 10,
-                          color: inStock ? AppColors.success : AppColors.textMuted,
+                          color: inStock ? BColors.success : BColors.textMuted(context),
                           fontWeight: FontWeight.w500,
                         ),
                       ),

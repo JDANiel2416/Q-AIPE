@@ -17,11 +17,12 @@ class AppDesign {
   static const Color surfaceVariantLight = Color(0xFFF1F5F9);
   static const Color borderLight = Color(0xFFE2E8F0);
   
-  // Fondos (Dark Mode)
-  static const Color backgroundDark = Color(0xFF0F172A);
-  static const Color surfaceDark = Color(0xFF1E293B);
-  static const Color surfaceVariantDark = Color(0xFF334155);
-  static const Color borderDark = Color(0xFF475569);
+  // Fondos (Dark Mode - AMOLED Pure Black)
+  static const Color backgroundDark = Color(0xFF000000);  // Negro puro AMOLED
+  static const Color surfaceDark = Color(0xFF0D0D0D);     // Casi negro para cards
+  static const Color surfaceVariantDark = Color(0xFF1A1A1A); // Gris muy oscuro
+  static const Color surfaceElevatedDark = Color(0xFF242424); // Para modales/overlays
+  static const Color borderDark = Color(0xFF2A2A2A);      // Borde sutil
   
   // Textos (Light Mode)
   static const Color textPrimaryLight = Color(0xFF0F172A);

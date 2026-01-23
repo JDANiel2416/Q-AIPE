@@ -4,25 +4,7 @@ import '../../services/session_service.dart';
 
 import 'package:flutter/services.dart';
 
-// =============================================================================
-// PALETA DE COLORES - TEMA CLARO MODERNO
-// =============================================================================
-class AppColors {
-  static const Color background = Color(0xFFF9FAFB);
-  static const Color surface = Color(0xFFFFFFFF);
-  static const Color surfaceVariant = Color(0xFFF3F4F6);
-  static const Color primary = Color(0xFF0062FF);
-  static const Color primaryLight = Color(0xFFE6F0FF);
-  static const Color textPrimary = Color(0xFF111827);
-  static const Color textSecondary = Color(0xFF6B7280);
-  static const Color textMuted = Color(0xFF9CA3AF);
-  static const Color border = Color(0xFFE5E7EB);
-  static const Color divider = Color(0xFFF3F4F6);
-  static const Color success = Color(0xFF10B981);
-  static const Color error = Color(0xFFEF4444);
-  static const Color shadowLight = Color(0x0A000000);
-  static const Color shadowMedium = Color(0x14000000);
-}
+import 'bodeguero_colors.dart';
 
 class EditProductScreen extends StatefulWidget {
   final Map<String, dynamic> product;
@@ -50,7 +32,7 @@ class _EditProductScreenState extends State<EditProductScreen> {
       const SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
         statusBarIconBrightness: Brightness.dark,
-        systemNavigationBarColor: AppColors.background,
+        systemNavigationBarColor: Colors.transparent,
         systemNavigationBarIconBrightness: Brightness.dark,
       ),
     );
@@ -101,9 +83,9 @@ class _EditProductScreenState extends State<EditProductScreen> {
     if (mounted) {
       if (result['success']) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
+          SnackBar(
             content: Text('Producto actualizado correctamente ✅'),
-            backgroundColor: AppColors.primary,
+            backgroundColor: BColors.primary(context),
           ),
         );
         Navigator.pop(context, true); // Return true to indicate changes
@@ -123,22 +105,22 @@ class _EditProductScreenState extends State<EditProductScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1A1F2E),
-        title: const Text("Eliminar Producto", style: TextStyle(color: Colors.white)),
+        title: Text("Eliminar Producto", style: TextStyle(color: Colors.white)),
         content: Text(
           "¿Estás seguro de eliminar '${widget.product['name']}'? Esta acción eliminará el producto permanentemente y no se puede deshacer.",
-          style: const TextStyle(color: Colors.white70)
+          style: TextStyle(color: Colors.white70)
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text("Cancelar", style: TextStyle(color: Colors.grey)),
+            child: Text("Cancelar", style: TextStyle(color: Colors.grey)),
           ),
           TextButton(
             onPressed: () async {
               Navigator.pop(ctx); // Cerrar dialog
               await _deleteProduct();
             },
-            child: const Text("Eliminar", style: TextStyle(color: Colors.redAccent)),
+            child: Text("Eliminar", style: TextStyle(color: Colors.redAccent)),
           ),
         ],
       ),
@@ -163,12 +145,12 @@ class _EditProductScreenState extends State<EditProductScreen> {
     if (mounted) {
       if (success) {
          ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Producto eliminado permanentemente"), backgroundColor: Colors.green)
+          SnackBar(content: Text("Producto eliminado permanentemente"), backgroundColor: Colors.green)
         );
         Navigator.pop(context, true); // Return true so list reloads
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("No se pudo eliminar el producto"), backgroundColor: AppColors.error)
+          SnackBar(content: Text("No se pudo eliminar el producto"), backgroundColor: BColors.error)
         );
       }
     }
@@ -177,7 +159,7 @@ class _EditProductScreenState extends State<EditProductScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: BColors.background(context),
       body: SafeArea(
         child: Column(
           children: [
@@ -195,16 +177,16 @@ class _EditProductScreenState extends State<EditProductScreen> {
                         width: double.infinity,
                         padding: const EdgeInsets.all(24),
                         decoration: BoxDecoration(
-                          color: AppColors.surface,
+                          color: BColors.surface(context),
                           borderRadius: BorderRadius.circular(20),
-                          boxShadow: const [
+                          boxShadow: [
                             BoxShadow(
-                              color: AppColors.shadowLight,
+                              color: BColors.shadowLight(context),
                               blurRadius: 16,
                               offset: Offset(0, 4),
                             ),
                           ],
-                          border: Border.all(color: AppColors.border, width: 0.5),
+                          border: Border.all(color: BColors.border(context), width: 0.5),
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -214,12 +196,12 @@ class _EditProductScreenState extends State<EditProductScreen> {
                                 Container(
                                   padding: const EdgeInsets.all(12),
                                   decoration: BoxDecoration(
-                                    color: AppColors.primary.withOpacity(0.1),
+                                    color: BColors.primary(context).withOpacity(0.1),
                                     shape: BoxShape.circle,
                                   ),
-                                  child: const Icon(
+                                  child: Icon(
                                     Icons.inventory_2,
-                                    color: AppColors.primary,
+                                    color: BColors.primary(context),
                                     size: 24,
                                   ),
                                 ),
@@ -230,8 +212,8 @@ class _EditProductScreenState extends State<EditProductScreen> {
                                     children: [
                                       Text(
                                         widget.product['name'],
-                                        style: const TextStyle(
-                                          color: AppColors.textPrimary,
+                                        style: TextStyle(
+                                          color: BColors.textPrimary(context),
                                           fontSize: 18,
                                           fontWeight: FontWeight.bold,
                                         ),
@@ -239,8 +221,8 @@ class _EditProductScreenState extends State<EditProductScreen> {
                                       const SizedBox(height: 4),
                                       Text(
                                         widget.product['category'] ?? 'Sin categoría',
-                                        style: const TextStyle(
-                                          color: AppColors.textSecondary,
+                                        style: TextStyle(
+                                          color: BColors.textSecondary(context),
                                           fontSize: 14,
                                         ),
                                       ),
@@ -250,7 +232,7 @@ class _EditProductScreenState extends State<EditProductScreen> {
                               ],
                             ),
                             const SizedBox(height: 16),
-                            const Divider(color: AppColors.divider),
+                            Divider(color: BColors.divider(context)),
                             const SizedBox(height: 16),
                             Row(
                               children: [
@@ -283,17 +265,17 @@ class _EditProductScreenState extends State<EditProductScreen> {
                             width: 4,
                             height: 24,
                             decoration: BoxDecoration(
-                              color: AppColors.primary,
+                              color: BColors.primary(context),
                               borderRadius: BorderRadius.circular(2),
                             ),
                           ),
                           const SizedBox(width: 12),
-                          const Text(
+                          Text(
                             "Editar Producto",
                             style: TextStyle(
                               fontSize: 20,
                               fontWeight: FontWeight.bold,
-                              color: AppColors.textPrimary,
+                              color: BColors.textPrimary(context),
                             ),
                           ),
                         ],
@@ -336,23 +318,23 @@ class _EditProductScreenState extends State<EditProductScreen> {
                       Container(
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          color: AppColors.surfaceVariant,
+                          color: BColors.surfaceVariant(context),
                           borderRadius: BorderRadius.circular(16),
                         ),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            const Text(
+                            Text(
                               "Nuevo Stock Total:",
                               style: TextStyle(
-                                color: AppColors.textSecondary,
+                                color: BColors.textSecondary(context),
                                 fontSize: 14,
                               ),
                             ),
                             Text(
                               "$_newStock unidades",
-                              style: const TextStyle(
-                                color: AppColors.primary,
+                              style: TextStyle(
+                                color: BColors.primary(context),
                                 fontSize: 18,
                                 fontWeight: FontWeight.bold,
                               ),
@@ -370,13 +352,13 @@ class _EditProductScreenState extends State<EditProductScreen> {
                         child: ElevatedButton(
                           onPressed: _isLoading ? null : _saveChanges,
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.primary,
+                            backgroundColor: BColors.primary(context),
                             foregroundColor: Colors.white,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(16),
                             ),
                             elevation: 4,
-                            shadowColor: AppColors.primary.withOpacity(0.4),
+                            shadowColor: BColors.primary(context).withOpacity(0.4),
                           ),
                           child: _isLoading
                               ? const SizedBox(
@@ -387,7 +369,7 @@ class _EditProductScreenState extends State<EditProductScreen> {
                                     strokeWidth: 2,
                                   ),
                                 )
-                              : const Text(
+                              : Text(
                                   "Guardar Cambios",
                                   style: TextStyle(
                                     fontSize: 16,
@@ -407,14 +389,14 @@ class _EditProductScreenState extends State<EditProductScreen> {
                           onPressed: _isLoading ? null : _confirmDelete,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.transparent, // Ghost button
-                            foregroundColor: AppColors.error,
+                            foregroundColor: BColors.error,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(16),
-                              side: const BorderSide(color: AppColors.error)
+                              side: BorderSide(color: BColors.error)
                             ),
                             elevation: 0,
                           ),
-                          child: const Text(
+                          child: Text(
                                   "Eliminar Producto",
                                   style: TextStyle(
                                     fontSize: 16,
@@ -445,17 +427,17 @@ class _EditProductScreenState extends State<EditProductScreen> {
             child: Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: AppColors.primaryLight.withOpacity(0.5),
+                color: BColors.primaryLight(context).withOpacity(0.5),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.arrow_back_ios_new, color: AppColors.primary, size: 20),
+              child: Icon(Icons.arrow_back_ios_new, color: BColors.primary(context), size: 20),
             ),
           ),
           const SizedBox(width: 16),
-          const Text(
+          Text(
             "Editar Producto",
             style: TextStyle(
-              color: AppColors.textPrimary,
+              color: BColors.textPrimary(context),
               fontWeight: FontWeight.bold,
               fontSize: 24,
             ),
@@ -471,12 +453,12 @@ class _EditProductScreenState extends State<EditProductScreen> {
       children: [
         Row(
           children: [
-            Icon(icon, color: AppColors.textSecondary, size: 16),
+            Icon(icon, color: BColors.textSecondary(context), size: 16),
             const SizedBox(width: 8),
             Text(
               label,
-              style: const TextStyle(
-                color: AppColors.textSecondary,
+              style: TextStyle(
+                color: BColors.textSecondary(context),
                 fontSize: 12,
               ),
             ),
@@ -485,8 +467,8 @@ class _EditProductScreenState extends State<EditProductScreen> {
         const SizedBox(height: 4),
         Text(
           value,
-          style: const TextStyle(
-            color: AppColors.textPrimary,
+          style: TextStyle(
+            color: BColors.textPrimary(context),
             fontSize: 16,
             fontWeight: FontWeight.bold,
           ),
@@ -507,13 +489,13 @@ class _EditProductScreenState extends State<EditProductScreen> {
       keyboardType: keyboardType,
       validator: validator,
       onChanged: onChanged,
-      style: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w600),
-      cursorColor: AppColors.primary,
+      style: TextStyle(color: BColors.textPrimary(context), fontWeight: FontWeight.w600),
+      cursorColor: BColors.primary(context),
       decoration: InputDecoration(
         labelText: label,
-        labelStyle: const TextStyle(color: AppColors.textSecondary),
+        labelStyle: TextStyle(color: BColors.textSecondary(context)),
         filled: true,
-        fillColor: AppColors.surfaceVariant,
+        fillColor: BColors.surfaceVariant(context),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
           borderSide: BorderSide.none,
@@ -524,11 +506,11 @@ class _EditProductScreenState extends State<EditProductScreen> {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
-          borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
+          borderSide: BorderSide(color: BColors.primary(context), width: 1.5),
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
-          borderSide: const BorderSide(color: AppColors.error),
+          borderSide: BorderSide(color: BColors.error),
         ),
       ),
     );

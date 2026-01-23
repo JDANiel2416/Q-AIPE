@@ -2,20 +2,7 @@ import 'package:flutter/material.dart';
 import '../../services/api_service.dart';
 import '../../services/session_service.dart';
 import 'debtor_detail_screen.dart';
-
-// Paleta de colores consistente con el Dashboard
-class AppColors {
-  static const Color background = Color(0xFFF9FAFB);
-  static const Color surface = Color(0xFFFFFFFF);
-  static const Color primary = Color(0xFF0062FF);
-  static const Color primaryLight = Color(0xFFE6F0FF);
-  static const Color textPrimary = Color(0xFF111827);
-  static const Color textSecondary = Color(0xFF6B7280);
-  static const Color textMuted = Color(0xFF9CA3AF);
-  static const Color border = Color(0xFFE5E7EB);
-  static const Color warning = Color(0xFFF59E0B);
-  static const Color shadowMedium = Color(0x14000000);
-}
+import 'bodeguero_colors.dart';
 
 class DebtorsScreen extends StatefulWidget {
   const DebtorsScreen({Key? key}) : super(key: key);
@@ -60,25 +47,25 @@ class _DebtorsScreenState extends State<DebtorsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: BColors.background(context),
       appBar: AppBar(
-        backgroundColor: AppColors.surface,
+        backgroundColor: BColors.surface(context),
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, color: AppColors.textPrimary),
+          icon: Icon(Icons.arrow_back_ios, color: BColors.textPrimary(context)),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text(
+        title: Text(
           "Dinero Fiado",
           style: TextStyle(
-            color: AppColors.textPrimary,
+            color: BColors.textPrimary(context),
             fontWeight: FontWeight.bold,
           ),
         ),
         centerTitle: true,
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? Center(child: CircularProgressIndicator())
           : Column(
               children: [
                 // Header con total
@@ -106,9 +93,9 @@ class _DebtorsScreenState extends State<DebtorsScreen> {
       width: double.infinity,
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: AppColors.warning.withOpacity(0.1),
+        color: BColors.warning.withOpacity(0.1),
         border: Border(
-          bottom: BorderSide(color: AppColors.warning.withOpacity(0.3)),
+          bottom: BorderSide(color: BColors.warning.withOpacity(0.3)),
         ),
       ),
       child: Column(
@@ -116,7 +103,7 @@ class _DebtorsScreenState extends State<DebtorsScreen> {
           Text(
             "Total Pendiente",
             style: TextStyle(
-              color: AppColors.textSecondary,
+              color: BColors.textSecondary(context),
               fontSize: 14,
             ),
           ),
@@ -124,7 +111,7 @@ class _DebtorsScreenState extends State<DebtorsScreen> {
           Text(
             "S/ ${_totalCredit.toStringAsFixed(2)}",
             style: TextStyle(
-              color: AppColors.warning,
+              color: BColors.warning,
               fontSize: 36,
               fontWeight: FontWeight.bold,
             ),
@@ -133,7 +120,7 @@ class _DebtorsScreenState extends State<DebtorsScreen> {
           Text(
             "${_debtors.length} cliente${_debtors.length != 1 ? 's' : ''} con deuda",
             style: TextStyle(
-              color: AppColors.textMuted,
+              color: BColors.textMuted(context),
               fontSize: 13,
             ),
           ),
@@ -165,12 +152,12 @@ class _DebtorsScreenState extends State<DebtorsScreen> {
         margin: const EdgeInsets.only(bottom: 12),
         padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: BColors.surface(context),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: BColors.border(context)),
         boxShadow: [
           BoxShadow(
-            color: AppColors.shadowMedium,
+            color: BColors.shadowMedium(context),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -183,14 +170,14 @@ class _DebtorsScreenState extends State<DebtorsScreen> {
             width: 48,
             height: 48,
             decoration: BoxDecoration(
-              color: AppColors.primaryLight,
+              color: BColors.primaryLight(context),
               shape: BoxShape.circle,
             ),
             child: Center(
               child: Text(
                 name.isNotEmpty ? name[0].toUpperCase() : '?',
                 style: TextStyle(
-                  color: AppColors.primary,
+                  color: BColors.primary(context),
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
                 ),
@@ -207,7 +194,7 @@ class _DebtorsScreenState extends State<DebtorsScreen> {
                 Text(
                   name,
                   style: TextStyle(
-                    color: AppColors.textPrimary,
+                    color: BColors.textPrimary(context),
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
                   ),
@@ -216,7 +203,7 @@ class _DebtorsScreenState extends State<DebtorsScreen> {
                 Text(
                   "$ordersCount pedido${ordersCount != 1 ? 's' : ''} pendiente${ordersCount != 1 ? 's' : ''}",
                   style: TextStyle(
-                    color: AppColors.textMuted,
+                    color: BColors.textMuted(context),
                     fontSize: 12,
                   ),
                 ),
@@ -233,7 +220,7 @@ class _DebtorsScreenState extends State<DebtorsScreen> {
                   Text(
                     "S/ ${totalDebt.toStringAsFixed(2)}",
                     style: TextStyle(
-                      color: AppColors.warning,
+                      color: BColors.warning,
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
                     ),
@@ -242,7 +229,7 @@ class _DebtorsScreenState extends State<DebtorsScreen> {
                     Text(
                       phone,
                       style: TextStyle(
-                        color: AppColors.textMuted,
+                        color: BColors.textMuted(context),
                         fontSize: 11,
                       ),
                     ),
@@ -251,7 +238,7 @@ class _DebtorsScreenState extends State<DebtorsScreen> {
               const SizedBox(width: 8),
               Icon(
                 Icons.chevron_right,
-                color: AppColors.textMuted,
+                color: BColors.textMuted(context),
                 size: 24,
               ),
             ],
@@ -270,13 +257,13 @@ class _DebtorsScreenState extends State<DebtorsScreen> {
           Icon(
             Icons.check_circle_outline,
             size: 80,
-            color: AppColors.textMuted.withOpacity(0.5),
+            color: BColors.textMuted(context).withOpacity(0.5),
           ),
           const SizedBox(height: 16),
           Text(
             "¡Sin deudas pendientes!",
             style: TextStyle(
-              color: AppColors.textSecondary,
+              color: BColors.textSecondary(context),
               fontSize: 18,
               fontWeight: FontWeight.w600,
             ),
@@ -285,7 +272,7 @@ class _DebtorsScreenState extends State<DebtorsScreen> {
           Text(
             "No tienes clientes con dinero fiado",
             style: TextStyle(
-              color: AppColors.textMuted,
+              color: BColors.textMuted(context),
               fontSize: 14,
             ),
           ),

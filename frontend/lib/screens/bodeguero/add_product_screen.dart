@@ -6,25 +6,7 @@ import '../../services/session_service.dart';
 
 import 'package:flutter/services.dart';
 
-// =============================================================================
-// PALETA DE COLORES - TEMA CLARO MODERNO
-// =============================================================================
-class AppColors {
-  static const Color background = Color(0xFFF9FAFB);
-  static const Color surface = Color(0xFFFFFFFF);
-  static const Color surfaceVariant = Color(0xFFF3F4F6);
-  static const Color primary = Color(0xFF0062FF);
-  static const Color primaryLight = Color(0xFFE6F0FF);
-  static const Color textPrimary = Color(0xFF111827);
-  static const Color textSecondary = Color(0xFF6B7280);
-  static const Color textMuted = Color(0xFF9CA3AF);
-  static const Color border = Color(0xFFE5E7EB);
-  static const Color divider = Color(0xFFF3F4F6);
-  static const Color success = Color(0xFF10B981);
-  static const Color error = Color(0xFFEF4444);
-  static const Color shadowLight = Color(0x0A000000);
-  static const Color shadowMedium = Color(0x14000000);
-}
+import 'bodeguero_colors.dart';
 
 class AddProductScreen extends StatefulWidget {
   const AddProductScreen({super.key});
@@ -96,7 +78,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
       const SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
         statusBarIconBrightness: Brightness.dark,
-        systemNavigationBarColor: AppColors.background,
+        systemNavigationBarColor: Colors.transparent,
         systemNavigationBarIconBrightness: Brightness.dark,
       ),
     );
@@ -217,9 +199,9 @@ class _AddProductScreenState extends State<AddProductScreen> {
     if (result['success']) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
+          SnackBar(
             content: Text('Producto agregado correctamente 📦'),
-            backgroundColor: AppColors.primary,
+            backgroundColor: BColors.primary(context),
           ),
         );
         Navigator.pop(context, true);
@@ -232,22 +214,22 @@ class _AddProductScreenState extends State<AddProductScreen> {
             context: context,
             builder: (ctx) => AlertDialog(
               backgroundColor: const Color(0xFF1A1F2E),
-              title: const Text("Producto Existente", style: TextStyle(color: Colors.white)),
+              title: Text("Producto Existente", style: TextStyle(color: Colors.white)),
               content: Text(
                 result['message'] ?? "Este producto ya está en tu lista.",
-                style: const TextStyle(color: Colors.white70),
+                style: TextStyle(color: Colors.white70),
               ),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(ctx),
-                  child: const Text("Cancelar", style: TextStyle(color: Colors.white70)),
+                  child: Text("Cancelar", style: TextStyle(color: Colors.white70)),
                 ),
                 TextButton(
                   onPressed: () {
                     Navigator.pop(ctx); // Cerrar primer diálogo
                     _showUpdateConfirmation(); // Mostrar confirmación
                   },
-                  child: const Text("Modificar Producto", style: TextStyle(color: Color(0xFF00D9FF), fontWeight: FontWeight.bold)),
+                  child: Text("Modificar Producto", style: TextStyle(color: Color(0xFF00D9FF), fontWeight: FontWeight.bold)),
                 ),
               ],
             ),
@@ -269,30 +251,30 @@ class _AddProductScreenState extends State<AddProductScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1A1F2E),
-        title: const Text("Confirmar Actualización", style: TextStyle(color: Colors.white)),
+        title: Text("Confirmar Actualización", style: TextStyle(color: Colors.white)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               "¿Deseas actualizar el producto existente con estos nuevos datos?",
               style: TextStyle(color: Colors.white70),
             ),
             const SizedBox(height: 16),
             Text(
               "Precio: S/ ${_priceCtrl.text}",
-              style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold),
+              style: TextStyle(color: BColors.primary(context), fontWeight: FontWeight.bold),
             ),
             Text(
               "Stock: ${_stockCtrl.text}",
-              style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold),
+              style: TextStyle(color: BColors.primary(context), fontWeight: FontWeight.bold),
             ),
           ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text("Cancelar", style: TextStyle(color: Colors.white70)),
+            child: Text("Cancelar", style: TextStyle(color: Colors.white70)),
           ),
           ElevatedButton(
             onPressed: () async {
@@ -300,10 +282,10 @@ class _AddProductScreenState extends State<AddProductScreen> {
               await _performUpdate();
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.primary,
+              backgroundColor: BColors.primary(context),
               foregroundColor: Colors.white,
             ),
-            child: const Text("Confirmar", style: TextStyle(fontWeight: FontWeight.bold)),
+            child: Text("Confirmar", style: TextStyle(fontWeight: FontWeight.bold)),
           ),
         ],
       ),
@@ -329,9 +311,9 @@ class _AddProductScreenState extends State<AddProductScreen> {
     if (mounted) {
       if (result['success']) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
+          SnackBar(
             content: Text('Producto actualizado correctamente ✅'),
-            backgroundColor: AppColors.primary,
+            backgroundColor: BColors.primary(context),
           ),
         );
         Navigator.pop(context, true); // Volver a la pantalla anterior
@@ -355,7 +337,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
           Container(
             margin: const EdgeInsets.only(bottom: 12),
             decoration: BoxDecoration(
-              color: AppColors.surfaceVariant,
+              color: BColors.surfaceVariant(context),
               borderRadius: BorderRadius.circular(12),
             ),
             child: ButtonTheme(
@@ -364,7 +346,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
                 value: _selectedSubCategory,
                 items: _subCategories[_selectedCategory]!.map((c) => DropdownMenuItem(
                   value: c,
-                  child: Text(c, style: const TextStyle(color: AppColors.textPrimary)),
+                  child: Text(c, style: TextStyle(color: BColors.textPrimary(context))),
                 )).toList(),
                 onChanged: (val) {
                   setState(() {
@@ -375,15 +357,15 @@ class _AddProductScreenState extends State<AddProductScreen> {
                     _updateGasLogic();
                   });
                 },
-                dropdownColor: AppColors.surface,
+                dropdownColor: BColors.surface(context),
                 decoration: InputDecoration(
                   labelText: "Tipo de ${_selectedCategory.substring(0, _selectedCategory.length - 1)}",
-                  labelStyle: const TextStyle(color: AppColors.textSecondary),
+                  labelStyle: TextStyle(color: BColors.textSecondary(context)),
                   border: InputBorder.none,
                   contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                 ),
-                style: const TextStyle(color: AppColors.textPrimary),
-                iconEnabledColor: AppColors.primary,
+                style: TextStyle(color: BColors.textPrimary(context)),
+                iconEnabledColor: BColors.primary(context),
                 menuMaxHeight: 300,
                 borderRadius: BorderRadius.circular(12),
               ),
@@ -401,7 +383,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
          Container(
             margin: const EdgeInsets.only(bottom: 12),
             decoration: BoxDecoration(
-              color: AppColors.surfaceVariant,
+              color: BColors.surfaceVariant(context),
               borderRadius: BorderRadius.circular(12),
             ),
             child: ButtonTheme(
@@ -410,7 +392,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
                 value: _selectedBrandPredefined,
                 items: _brandsBySubCategory[_selectedSubCategory]!.map((b) => DropdownMenuItem(
                   value: b,
-                  child: Text(b, style: const TextStyle(color: AppColors.textPrimary)),
+                  child: Text(b, style: TextStyle(color: BColors.textPrimary(context))),
                 )).toList(),
                 onChanged: (val) {
                   setState(() {
@@ -422,15 +404,15 @@ class _AddProductScreenState extends State<AddProductScreen> {
                     }
                   });
                 },
-                dropdownColor: AppColors.surface,
-                decoration: const InputDecoration(
+                dropdownColor: BColors.surface(context),
+                decoration: InputDecoration(
                   labelText: "Seleccionar Marca",
-                  labelStyle: TextStyle(color: AppColors.textSecondary),
+                  labelStyle: TextStyle(color: BColors.textSecondary(context)),
                   border: InputBorder.none,
                   contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                 ),
-                style: const TextStyle(color: AppColors.textPrimary),
-                iconEnabledColor: AppColors.primary,
+                style: TextStyle(color: BColors.textPrimary(context)),
+                iconEnabledColor: BColors.primary(context),
                 menuMaxHeight: 300,
                 borderRadius: BorderRadius.circular(12),
               ),
@@ -475,7 +457,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
               flex: 1,
               child: Container(
                 decoration: BoxDecoration(
-                  color: AppColors.surfaceVariant,
+                  color: BColors.surfaceVariant(context),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: ButtonTheme(
@@ -484,16 +466,16 @@ class _AddProductScreenState extends State<AddProductScreen> {
                     value: _selectedUnit,
                     items: (_unitsByCategory[_selectedCategory] ?? ['unidades']).map((u) => DropdownMenuItem(
                       value: u,
-                      child: Text(u, style: const TextStyle(color: AppColors.textPrimary)),
+                      child: Text(u, style: TextStyle(color: BColors.textPrimary(context))),
                     )).toList(),
                     onChanged: (val) => setState(() => _selectedUnit = val!),
-                    dropdownColor: AppColors.surface,
-                    decoration: const InputDecoration(
+                    dropdownColor: BColors.surface(context),
+                    decoration: InputDecoration(
                       contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 16),
                       border: InputBorder.none,
                     ),
-                    style: const TextStyle(color: AppColors.textPrimary),
-                    iconEnabledColor: AppColors.primary,
+                    style: TextStyle(color: BColors.textPrimary(context)),
+                    iconEnabledColor: BColors.primary(context),
                     menuMaxHeight: 300,
                     borderRadius: BorderRadius.circular(12),
                   ),
@@ -511,14 +493,14 @@ class _AddProductScreenState extends State<AddProductScreen> {
       fields.add(
         Container(
           decoration: BoxDecoration(
-            color: AppColors.surfaceVariant,
+            color: BColors.surfaceVariant(context),
             borderRadius: BorderRadius.circular(12),
           ),
           child: CheckboxListTile(
-            title: const Text("¿Con Gas?", style: TextStyle(color: AppColors.textPrimary)),
+            title: Text("¿Con Gas?", style: TextStyle(color: BColors.textPrimary(context))),
             value: _hasGas,
             onChanged: (v) => setState(() => _hasGas = v!),
-            activeColor: AppColors.primary,
+            activeColor: BColors.primary(context),
             checkColor: Colors.white,
           ),
         )
@@ -538,13 +520,13 @@ class _AddProductScreenState extends State<AddProductScreen> {
       controller: controller,
       keyboardType: keyboardType,
       validator: validator,
-      style: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w600),
-      cursorColor: AppColors.primary,
+      style: TextStyle(color: BColors.textPrimary(context), fontWeight: FontWeight.w600),
+      cursorColor: BColors.primary(context),
       decoration: InputDecoration(
         labelText: label,
-        labelStyle: const TextStyle(color: AppColors.textSecondary),
+        labelStyle: TextStyle(color: BColors.textSecondary(context)),
         filled: true,
-        fillColor: AppColors.surfaceVariant,
+        fillColor: BColors.surfaceVariant(context),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
           borderSide: BorderSide.none,
@@ -555,11 +537,11 @@ class _AddProductScreenState extends State<AddProductScreen> {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
-          borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
+          borderSide: BorderSide(color: BColors.primary(context), width: 1.5),
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
-          borderSide: const BorderSide(color: AppColors.error),
+          borderSide: BorderSide(color: BColors.error),
         ),
       ),
     );
@@ -568,7 +550,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: BColors.background(context),
       body: SafeArea(
         child: Column(
           children: [
@@ -581,12 +563,12 @@ class _AddProductScreenState extends State<AddProductScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
+                      Text(
                         "Datos Básicos",
                         style: TextStyle(
                           fontSize: 22,
                           fontWeight: FontWeight.bold,
-                          color: AppColors.textPrimary,
+                          color: BColors.textPrimary(context),
                         ),
                       ),
                       const SizedBox(height: 16),
@@ -594,7 +576,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
                       // Dropdown de categoría
                       Container(
                         decoration: BoxDecoration(
-                          color: AppColors.surfaceVariant,
+                          color: BColors.surfaceVariant(context),
                           borderRadius: BorderRadius.circular(16),
                         ),
                         child: ButtonTheme(
@@ -603,7 +585,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
                             value: _selectedCategory,
                             items: _categories.map((c) => DropdownMenuItem(
                               value: c,
-                              child: Text(c, style: const TextStyle(color: AppColors.textPrimary)),
+                              child: Text(c, style: TextStyle(color: BColors.textPrimary(context))),
                             )).toList(),
                             onChanged: (val) {
                               setState(() {
@@ -611,15 +593,15 @@ class _AddProductScreenState extends State<AddProductScreen> {
                                 _updateDefaults();
                               });
                             },
-                            dropdownColor: AppColors.surface,
-                            decoration: const InputDecoration(
+                            dropdownColor: BColors.surface(context),
+                            decoration: InputDecoration(
                               labelText: "Categoría",
-                              labelStyle: TextStyle(color: AppColors.textSecondary),
+                              labelStyle: TextStyle(color: BColors.textSecondary(context)),
                               border: InputBorder.none,
                               contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                             ),
-                            style: const TextStyle(color: AppColors.textPrimary),
-                            iconEnabledColor: AppColors.primary,
+                            style: TextStyle(color: BColors.textPrimary(context)),
+                            iconEnabledColor: BColors.primary(context),
                             borderRadius: BorderRadius.circular(16),
                           ),
                         ),
@@ -646,17 +628,17 @@ class _AddProductScreenState extends State<AddProductScreen> {
                             width: 4,
                             height: 24,
                             decoration: BoxDecoration(
-                              color: AppColors.primary,
+                              color: BColors.primary(context),
                               borderRadius: BorderRadius.circular(2),
                             ),
                           ),
                           const SizedBox(width: 12),
                           Text(
                             "Detalles de $_selectedCategory",
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
-                              color: AppColors.primary,
+                              color: BColors.primary(context),
                             ),
                           ),
                         ],
@@ -666,16 +648,16 @@ class _AddProductScreenState extends State<AddProductScreen> {
                       Container(
                         padding: const EdgeInsets.all(20),
                         decoration: BoxDecoration(
-                          color: AppColors.surface,
+                          color: BColors.surface(context),
                           borderRadius: BorderRadius.circular(20),
-                          boxShadow: const [
+                          boxShadow: [
                             BoxShadow(
-                              color: AppColors.shadowLight,
+                              color: BColors.shadowLight(context),
                               blurRadius: 16,
                               offset: Offset(0, 4),
                             ),
                           ],
-                          border: Border.all(color: AppColors.border, width: 0.5),
+                          border: Border.all(color: BColors.border(context), width: 0.5),
                         ),
                         child: _buildDynamicFields(),
                       ),
@@ -713,13 +695,13 @@ class _AddProductScreenState extends State<AddProductScreen> {
                         child: ElevatedButton(
                           onPressed: _isLoading ? null : _submit,
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.primary,
+                            backgroundColor: BColors.primary(context),
                             foregroundColor: Colors.white,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(16),
                             ),
                             elevation: 4,
-                            shadowColor: AppColors.primary.withOpacity(0.4),
+                            shadowColor: BColors.primary(context).withOpacity(0.4),
                           ),
                           child: _isLoading 
                             ? const SizedBox(
@@ -727,7 +709,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
                                 height: 24,
                                 child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
                               )
-                            : const Text(
+                            : Text(
                                 "Guardar Producto",
                                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                               ),
@@ -754,17 +736,17 @@ class _AddProductScreenState extends State<AddProductScreen> {
             child: Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: AppColors.primaryLight.withOpacity(0.5),
+                color: BColors.primaryLight(context).withOpacity(0.5),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.arrow_back_ios_new, color: AppColors.primary, size: 20),
+              child: Icon(Icons.arrow_back_ios_new, color: BColors.primary(context), size: 20),
             ),
           ),
           const SizedBox(width: 16),
-          const Text(
+          Text(
             "Nuevo Producto",
             style: TextStyle(
-              color: AppColors.textPrimary,
+              color: BColors.textPrimary(context),
               fontWeight: FontWeight.bold,
               fontSize: 24,
             ),

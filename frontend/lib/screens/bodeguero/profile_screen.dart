@@ -1,29 +1,13 @@
 import 'package:flutter/material.dart';
 import '../../services/api_service.dart';
 import '../../services/session_service.dart';
+import '../common/login_screen.dart';
+import '../../services/theme_provider.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import 'package:flutter/services.dart';
 
-// =============================================================================
-// PALETA DE COLORES - TEMA CLARO MODERNO
-// =============================================================================
-class AppColors {
-  static const Color background = Color(0xFFF9FAFB);
-  static const Color surface = Color(0xFFFFFFFF);
-  static const Color surfaceVariant = Color(0xFFF3F4F6);
-  static const Color primary = Color(0xFF0062FF);
-  static const Color primaryLight = Color(0xFFE6F0FF);
-  static const Color textPrimary = Color(0xFF111827);
-  static const Color textSecondary = Color(0xFF6B7280);
-  static const Color textMuted = Color(0xFF9CA3AF);
-  static const Color border = Color(0xFFE5E7EB);
-  static const Color divider = Color(0xFFF3F4F6);
-  static const Color success = Color(0xFF10B981);
-  static const Color error = Color(0xFFEF4444);
-  static const Color shadowLight = Color(0x0A000000);
-  static const Color shadowMedium = Color(0x14000000);
-}
+import 'bodeguero_colors.dart';
 
 class ProfileScreen extends StatefulWidget {
   final bool isEmbedded;
@@ -61,7 +45,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       const SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
         statusBarIconBrightness: Brightness.dark,
-        systemNavigationBarColor: AppColors.background,
+        systemNavigationBarColor: Colors.transparent,
         systemNavigationBarIconBrightness: Brightness.dark,
       ),
     );
@@ -166,12 +150,47 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  Future<void> _logout() async {
+    // Mostrar diálogo de confirmación
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: BColors.surface(context),
+        title: Text("Cerrar Sesión", style: TextStyle(color: BColors.textPrimary(context))),
+        content: Text("¿Estás seguro de que deseas salir?", style: TextStyle(color: BColors.textSecondary(context))),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text("Cancelar", style: TextStyle(color: BColors.textSecondary(context))),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text("Salir", style: TextStyle(color: BColors.error, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    setState(() => _isSaving = true); // Reusamos el estado de carga para bloquear UI
+
+    await SessionService().logout();
+    
+    if (mounted) {
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (context) => const LoginScreen()),
+        (route) => false,
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: BColors.background(context),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+          ? Center(child: CircularProgressIndicator(color: BColors.primary(context)))
           : SafeArea(
               child: Column(
                 children: [
@@ -237,6 +256,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   ),
                                 ]),
                                 
+                                const SizedBox(height: 24),
+                                
+                                // Preferences Section
+                                _buildSectionHeader("Preferencias", Icons.settings),
+                                const SizedBox(height: 16),
+                                _buildInfoCard([
+                                  _buildThemeToggle(),
+                                ]),
+                                
                                 const SizedBox(height: 32),
                                 
                                 // Save Button
@@ -246,13 +274,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   child: ElevatedButton(
                                     onPressed: _isSaving ? null : _saveProfile,
                                     style: ElevatedButton.styleFrom(
-                                      backgroundColor: AppColors.primary,
+                                      backgroundColor: BColors.primary(context),
                                       foregroundColor: Colors.white,
                                       shape: RoundedRectangleBorder(
                                         borderRadius: BorderRadius.circular(16),
                                       ),
                                       elevation: 4,
-                                      shadowColor: AppColors.primary.withOpacity(0.4),
+                                      shadowColor: BColors.primary(context).withOpacity(0.4),
                                     ),
                                     child: _isSaving
                                         ? const SizedBox(
@@ -263,7 +291,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                               strokeWidth: 2,
                                             ),
                                           )
-                                        : const Text(
+                                        : Text(
                                             "Guardar Cambios",
                                             style: TextStyle(
                                               fontSize: 16,
@@ -271,6 +299,38 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                               color: Colors.white,
                                             ),
                                           ),
+                                  ),
+                                ),
+                                const SizedBox(height: 20),
+                                
+                                // Logout Button
+                                SizedBox(
+                                  width: double.infinity,
+                                  height: 56,
+                                  child: OutlinedButton(
+                                    onPressed: _isSaving ? null : _logout,
+                                    style: OutlinedButton.styleFrom(
+                                      side: BorderSide(color: BColors.error, width: 1.5),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(16),
+                                      ),
+                                      foregroundColor: BColors.error,
+                                    ),
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Icon(Icons.logout, color: BColors.error),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          "Cerrar Sesión",
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.bold,
+                                            color: BColors.error,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 ),
                                 const SizedBox(height: 40),
@@ -297,18 +357,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
               child: Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: AppColors.primaryLight.withOpacity(0.5),
+                  color: BColors.primaryLight(context).withOpacity(0.5),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.arrow_back_ios_new, color: AppColors.primary, size: 20),
+                child: Icon(Icons.arrow_back_ios_new, color: BColors.primary(context), size: 20),
               ),
             ),
             const SizedBox(width: 16),
           ],
-          const Text(
+          Text(
             "Mi Perfil",
             style: TextStyle(
-              color: AppColors.textPrimary,
+              color: BColors.textPrimary(context),
               fontWeight: FontWeight.bold,
               fontSize: 24,
             ),
@@ -329,10 +389,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 height: 130,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  border: Border.all(color: AppColors.surface, width: 4),
-                  boxShadow: const [
+                  border: Border.all(color: BColors.surface(context), width: 4),
+                  boxShadow: [
                     BoxShadow(
-                      color: AppColors.shadowMedium,
+                      color: BColors.shadowMedium(context),
                       blurRadius: 20,
                       offset: Offset(0, 10),
                     ),
@@ -340,14 +400,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
                 child: CircleAvatar(
                   radius: 65,
-                  backgroundColor: AppColors.surfaceVariant,
+                  backgroundColor: BColors.surfaceVariant(context),
                   backgroundImage: _selectedImage != null
                       ? FileImage(_selectedImage!)
                       : (_photoUrl != null
                           ? NetworkImage("${ApiService.host}$_photoUrl")
                           : null) as ImageProvider?,
                   child: (_selectedImage == null && _photoUrl == null)
-                      ? const Icon(Icons.person_outline, color: AppColors.textMuted, size: 60)
+                      ? Icon(Icons.person_outline, color: BColors.textMuted(context), size: 60)
                       : null,
                 ),
               ),
@@ -359,18 +419,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   child: Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: AppColors.primary,
+                      color: BColors.primary(context),
                       shape: BoxShape.circle,
-                      border: Border.all(color: AppColors.surface, width: 3),
-                      boxShadow: const [
+                      border: Border.all(color: BColors.surface(context), width: 3),
+                      boxShadow: [
                         BoxShadow(
-                          color: AppColors.shadowLight,
+                          color: BColors.shadowLight(context),
                           blurRadius: 8,
                           offset: Offset(0, 4),
                         ),
                       ],
                     ),
-                    child: const Icon(Icons.camera_alt, color: Colors.white, size: 18),
+                    child: Icon(Icons.camera_alt, color: Colors.white, size: 18),
                   ),
                 ),
               ),
@@ -378,10 +438,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
         ),
         const SizedBox(height: 12),
-        const Text(
+        Text(
           "Toca para actualizar tu foto",
           style: TextStyle(
-            color: AppColors.textSecondary,
+            color: BColors.textSecondary(context),
             fontSize: 13,
             fontWeight: FontWeight.w500,
           ),
@@ -397,17 +457,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
           width: 4,
           height: 24,
           decoration: BoxDecoration(
-            color: AppColors.primary,
+            color: BColors.primary(context),
             borderRadius: BorderRadius.circular(2),
           ),
         ),
         const SizedBox(width: 12),
         Text(
           title,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.bold,
-            color: AppColors.textPrimary,
+            color: BColors.textPrimary(context),
           ),
         ),
       ],
@@ -418,16 +478,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: BColors.surface(context),
         borderRadius: BorderRadius.circular(20),
-        boxShadow: const [
+        boxShadow: [
           BoxShadow(
-            color: AppColors.shadowLight,
+            color: BColors.shadowLight(context),
             blurRadius: 16,
             offset: Offset(0, 4),
           ),
         ],
-        border: Border.all(color: AppColors.border, width: 0.5),
+        border: Border.all(color: BColors.border(context), width: 0.5),
       ),
       child: Column(
         children: children,
@@ -448,14 +508,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
       keyboardType: keyboardType,
       validator: validator,
       maxLines: maxLines,
-      style: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w600),
-      cursorColor: AppColors.primary,
+      style: TextStyle(color: BColors.textPrimary(context), fontWeight: FontWeight.w600),
+      cursorColor: BColors.primary(context),
       decoration: InputDecoration(
         labelText: label,
-        labelStyle: const TextStyle(color: AppColors.textSecondary),
-        prefixIcon: Icon(icon, color: AppColors.textSecondary),
+        labelStyle: TextStyle(color: BColors.textSecondary(context)),
+        prefixIcon: Icon(icon, color: BColors.textSecondary(context)),
         filled: true,
-        fillColor: AppColors.surfaceVariant,
+        fillColor: BColors.surfaceVariant(context),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
           borderSide: BorderSide.none,
@@ -466,11 +526,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
-          borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
+          borderSide: BorderSide(color: BColors.primary(context), width: 1.5),
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
-          borderSide: const BorderSide(color: AppColors.error),
+          borderSide: BorderSide(color: BColors.error),
         ),
       ),
     );
@@ -480,13 +540,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: AppColors.surface, // Clean white
+        color: BColors.surface(context), // Clean white
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: BColors.border(context)),
       ),
       child: Row(
         children: [
-          Icon(icon, color: AppColors.textSecondary, size: 22),
+          Icon(icon, color: BColors.textSecondary(context), size: 22),
           const SizedBox(width: 16),
           Expanded(
             child: Column(
@@ -494,8 +554,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
               children: [
                 Text(
                   label,
-                  style: const TextStyle(
-                    color: AppColors.textSecondary,
+                  style: TextStyle(
+                    color: BColors.textSecondary(context),
                     fontSize: 12,
                     fontWeight: FontWeight.w500,
                   ),
@@ -503,8 +563,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 const SizedBox(height: 2),
                 Text(
                   value.isEmpty ? "No disponible" : value,
-                  style: const TextStyle(
-                    color: AppColors.textPrimary,
+                  style: TextStyle(
+                    color: BColors.textPrimary(context),
                     fontSize: 15,
                     fontWeight: FontWeight.bold,
                   ),
@@ -512,9 +572,68 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ],
             ),
           ),
-          const Icon(Icons.lock_outline, size: 16, color: AppColors.border),
+          Icon(Icons.lock_outline, size: 16, color: BColors.border(context)),
         ],
       ),
+    );
+  }
+
+  Widget _buildThemeToggle() {
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: ThemeProvider().themeMode,
+      builder: (context, themeMode, child) {
+        final isDark = themeMode == ThemeMode.dark;
+        return Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: isDark 
+                  ? const Color(0xFF1A1A1A) 
+                  : BColors.primaryLight(context),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(
+                isDark ? Icons.dark_mode : Icons.light_mode,
+                color: BColors.primary(context),
+                size: 22,
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    "Modo Oscuro",
+                    style: TextStyle(
+                      color: BColors.textPrimary(context),
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    isDark ? "Activado - AMOLED" : "Desactivado",
+                    style: TextStyle(
+                      color: BColors.textSecondary(context),
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Switch(
+              value: isDark,
+              onChanged: (value) => ThemeProvider().toggleTheme(),
+              activeColor: BColors.primary(context),
+              activeTrackColor: BColors.primary(context).withOpacity(0.3),
+              inactiveThumbColor: BColors.textMuted(context),
+              inactiveTrackColor: BColors.surfaceVariant(context),
+            ),
+          ],
+        );
+      },
     );
   }
 }

@@ -1,20 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../services/api_service.dart';
 import '../../services/session_service.dart';
-
-// Paleta de colores consistente
-class AppColors {
-  static const Color background = Color(0xFFF9FAFB);
-  static const Color surface = Color(0xFFFFFFFF);
-  static const Color primary = Color(0xFF0062FF);
-  static const Color primaryLight = Color(0xFFE6F0FF);
-  static const Color textPrimary = Color(0xFF111827);
-  static const Color textSecondary = Color(0xFF6B7280);
-  static const Color textMuted = Color(0xFF9CA3AF);
-  static const Color border = Color(0xFFE5E7EB);
-  static const Color warning = Color(0xFFF59E0B);
-  static const Color shadowMedium = Color(0x14000000);
-}
+import 'bodeguero_colors.dart';
 
 class DebtorDetailScreen extends StatefulWidget {
   final String debtorId;
@@ -71,18 +58,18 @@ class _DebtorDetailScreenState extends State<DebtorDetailScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: BColors.background(context),
       appBar: AppBar(
-        backgroundColor: AppColors.surface,
+        backgroundColor: BColors.surface(context),
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, color: AppColors.textPrimary),
+          icon: Icon(Icons.arrow_back_ios, color: BColors.textPrimary(context)),
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
           _clientName,
-          style: const TextStyle(
-            color: AppColors.textPrimary,
+          style: TextStyle(
+            color: BColors.textPrimary(context),
             fontWeight: FontWeight.bold,
             fontSize: 18,
           ),
@@ -90,7 +77,7 @@ class _DebtorDetailScreenState extends State<DebtorDetailScreen> {
         centerTitle: true,
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? Center(child: CircularProgressIndicator())
           : Column(
               children: [
                 // Header con total del cliente
@@ -118,9 +105,9 @@ class _DebtorDetailScreenState extends State<DebtorDetailScreen> {
       width: double.infinity,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: BColors.surface(context),
         border: Border(
-          bottom: BorderSide(color: AppColors.border),
+          bottom: BorderSide(color: BColors.border(context)),
         ),
       ),
       child: Row(
@@ -130,14 +117,14 @@ class _DebtorDetailScreenState extends State<DebtorDetailScreen> {
             width: 60,
             height: 60,
             decoration: BoxDecoration(
-              color: AppColors.primaryLight,
+              color: BColors.primaryLight(context),
               shape: BoxShape.circle,
             ),
             child: Center(
               child: Text(
                 _clientName.isNotEmpty ? _clientName[0].toUpperCase() : '?',
                 style: TextStyle(
-                  color: AppColors.primary,
+                  color: BColors.primary(context),
                   fontSize: 26,
                   fontWeight: FontWeight.bold,
                 ),
@@ -154,7 +141,7 @@ class _DebtorDetailScreenState extends State<DebtorDetailScreen> {
                 Text(
                   _clientName,
                   style: TextStyle(
-                    color: AppColors.textPrimary,
+                    color: BColors.textPrimary(context),
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
                   ),
@@ -164,7 +151,7 @@ class _DebtorDetailScreenState extends State<DebtorDetailScreen> {
                   Text(
                     _phone,
                     style: TextStyle(
-                      color: AppColors.textMuted,
+                      color: BColors.textMuted(context),
                       fontSize: 13,
                     ),
                   ),
@@ -173,7 +160,7 @@ class _DebtorDetailScreenState extends State<DebtorDetailScreen> {
                 Text(
                   "${_orders.length} pedido${_orders.length != 1 ? 's' : ''} pendiente${_orders.length != 1 ? 's' : ''}",
                   style: TextStyle(
-                    color: AppColors.textSecondary,
+                    color: BColors.textSecondary(context),
                     fontSize: 12,
                   ),
                 ),
@@ -188,14 +175,14 @@ class _DebtorDetailScreenState extends State<DebtorDetailScreen> {
               Text(
                 "Debe",
                 style: TextStyle(
-                  color: AppColors.textMuted,
+                  color: BColors.textMuted(context),
                   fontSize: 11,
                 ),
               ),
               Text(
                 "S/ ${_totalDebt.toStringAsFixed(2)}",
                 style: TextStyle(
-                  color: AppColors.warning,
+                  color: BColors.warning,
                   fontSize: 22,
                   fontWeight: FontWeight.bold,
                 ),
@@ -216,12 +203,12 @@ class _DebtorDetailScreenState extends State<DebtorDetailScreen> {
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: BColors.surface(context),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: BColors.border(context)),
         boxShadow: [
           BoxShadow(
-            color: AppColors.shadowMedium,
+            color: BColors.shadowMedium(context),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -234,7 +221,7 @@ class _DebtorDetailScreenState extends State<DebtorDetailScreen> {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: AppColors.warning.withOpacity(0.08),
+              color: BColors.warning.withOpacity(0.08),
               borderRadius: const BorderRadius.only(
                 topLeft: Radius.circular(16),
                 topRight: Radius.circular(16),
@@ -248,13 +235,13 @@ class _DebtorDetailScreenState extends State<DebtorDetailScreen> {
                     Icon(
                       Icons.calendar_today_outlined,
                       size: 16,
-                      color: AppColors.textSecondary,
+                      color: BColors.textSecondary(context),
                     ),
                     const SizedBox(width: 8),
                     Text(
                       date,
                       style: TextStyle(
-                        color: AppColors.textPrimary,
+                        color: BColors.textPrimary(context),
                         fontWeight: FontWeight.w600,
                         fontSize: 14,
                       ),
@@ -263,13 +250,13 @@ class _DebtorDetailScreenState extends State<DebtorDetailScreen> {
                     Icon(
                       Icons.access_time,
                       size: 16,
-                      color: AppColors.textSecondary,
+                      color: BColors.textSecondary(context),
                     ),
                     const SizedBox(width: 4),
                     Text(
                       time,
                       style: TextStyle(
-                        color: AppColors.textSecondary,
+                        color: BColors.textSecondary(context),
                         fontSize: 13,
                       ),
                     ),
@@ -278,12 +265,12 @@ class _DebtorDetailScreenState extends State<DebtorDetailScreen> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
-                    color: AppColors.warning,
+                    color: BColors.warning,
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
                     "S/ ${totalAmount.toStringAsFixed(2)}",
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
                       fontSize: 13,
@@ -321,14 +308,14 @@ class _DebtorDetailScreenState extends State<DebtorDetailScreen> {
             width: 32,
             height: 32,
             decoration: BoxDecoration(
-              color: AppColors.primaryLight,
+              color: BColors.primaryLight(context),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Center(
               child: Text(
                 "$quantity",
                 style: TextStyle(
-                  color: AppColors.primary,
+                  color: BColors.primary(context),
                   fontWeight: FontWeight.bold,
                   fontSize: 14,
                 ),
@@ -345,7 +332,7 @@ class _DebtorDetailScreenState extends State<DebtorDetailScreen> {
                 Text(
                   name,
                   style: TextStyle(
-                    color: AppColors.textPrimary,
+                    color: BColors.textPrimary(context),
                     fontWeight: FontWeight.w500,
                     fontSize: 14,
                   ),
@@ -353,7 +340,7 @@ class _DebtorDetailScreenState extends State<DebtorDetailScreen> {
                 Text(
                   "S/ ${unitPrice.toStringAsFixed(2)} c/u",
                   style: TextStyle(
-                    color: AppColors.textMuted,
+                    color: BColors.textMuted(context),
                     fontSize: 12,
                   ),
                 ),
@@ -365,7 +352,7 @@ class _DebtorDetailScreenState extends State<DebtorDetailScreen> {
           Text(
             "S/ ${totalPrice.toStringAsFixed(2)}",
             style: TextStyle(
-              color: AppColors.textPrimary,
+              color: BColors.textPrimary(context),
               fontWeight: FontWeight.w600,
               fontSize: 14,
             ),
@@ -383,13 +370,13 @@ class _DebtorDetailScreenState extends State<DebtorDetailScreen> {
           Icon(
             Icons.receipt_long_outlined,
             size: 80,
-            color: AppColors.textMuted.withOpacity(0.5),
+            color: BColors.textMuted(context).withOpacity(0.5),
           ),
           const SizedBox(height: 16),
           Text(
             "Sin pedidos pendientes",
             style: TextStyle(
-              color: AppColors.textSecondary,
+              color: BColors.textSecondary(context),
               fontSize: 18,
               fontWeight: FontWeight.w600,
             ),
