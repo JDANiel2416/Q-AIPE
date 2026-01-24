@@ -382,7 +382,8 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       backgroundColor: isDark ? AppDesign.backgroundDark : AppDesign.backgroundLight,
       body: Container(
         decoration: BoxDecoration(
-          gradient: isDark ? AppDesign.darkGradient : AppDesign.subtleGradient,
+          color: isDark ? AppDesign.backgroundDark : null,
+          gradient: isDark ? null : AppDesign.subtleGradient,
         ),
         child: SafeArea(
           child: SingleChildScrollView(

@@ -12,6 +12,11 @@
         android:label="Chek"
         android:name="${applicationName}"
         android:icon="@mipmap/launcher_icon">
+
+        <meta-data
+            android:name="com.yandex.mapkit.API_KEY"
+            android:value="76680787-ebd4-43fd-861b-11494d191834"
+        />
         
         <service
             android:name="id.flutter.flutter_background_service.BackgroundService"

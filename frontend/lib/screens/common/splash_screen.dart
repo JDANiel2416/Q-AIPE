@@ -6,20 +6,7 @@ import '../user/home_screen.dart';
 import 'login_screen.dart';
 import '../bodeguero/dashboard_screen.dart';
 
-// REPLICANDO PALETA DE COLORES (COPIA DE HOME_SCREEN PARA CONSISTENCIA)
-class AppColors {
-  // Fondos
-  static const Color background = Color(0xFFF9FAFB);        
-  static const Color surface = Color(0xFFFFFFFF);           
-  
-  // Color primario (azul vibrante #0062ff)
-  static const Color primary = Color(0xFF0062FF);           
-  static const Color primaryLight = Color(0xFFE6F0FF);      
-  
-  // Textos
-  static const Color textPrimary = Color(0xFF111827);       
-  static const Color textSecondary = Color(0xFF6B7280);     
-}
+import '../../theme/design_system.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -42,8 +29,8 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     SystemChrome.setSystemUIOverlayStyle(
       const SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
-        statusBarIconBrightness: Brightness.dark,
-        systemNavigationBarColor: Colors.white,
+        statusBarIconBrightness: Brightness.dark, // Se ajustará automáticamente en real
+        systemNavigationBarColor: Colors.transparent, // Transparente para edge-to-edge
         systemNavigationBarIconBrightness: Brightness.dark,
       ),
     );
@@ -138,8 +125,10 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: isDark ? AppDesign.backgroundDark : AppDesign.backgroundLight,
       body: Stack(
         children: [
           // Fondo decorativo sutil
@@ -151,10 +140,10 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
               height: 300,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: AppColors.primaryLight.withOpacity(0.5),
+                color: isDark ? AppDesign.primaryBlueDark.withOpacity(0.1) : AppDesign.primaryBlueUltraLight.withOpacity(0.5),
                 boxShadow: [
                   BoxShadow(
-                    color: AppColors.primary.withOpacity(0.1),
+                    color: AppDesign.primaryBlue.withOpacity(0.1),
                     blurRadius: 50,
                     spreadRadius: 20,
                   ),
@@ -182,15 +171,15 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                             shape: BoxShape.circle,
                             gradient: LinearGradient(
                               colors: [
-                                AppColors.primaryLight,
-                                Colors.white,
+                                isDark ? AppDesign.primaryBlueDark : AppDesign.primaryBlueUltraLight,
+                                isDark ? AppDesign.surfaceVariantDark : Colors.white,
                               ],
                               begin: Alignment.topLeft,
                               end: Alignment.bottomRight,
                             ),
                             boxShadow: [
                               BoxShadow(
-                                color: AppColors.primary.withOpacity(0.2),
+                                color: AppDesign.primaryBlue.withOpacity(0.2),
                                 blurRadius: 20,
                                 offset: const Offset(0, 8),
                               ),
@@ -199,27 +188,27 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                           child: const Icon(
                             Icons.auto_awesome,
                             size: 48,
-                            color: AppColors.primary,
+                            color: AppDesign.primaryBlue,
                           ),
                         ),
                         const SizedBox(height: 24),
                         
                         // TEXTO MARCA
-                        const Text(
+                        Text(
                           "Chek",
                           style: TextStyle(
                             fontSize: 32,
                             fontWeight: FontWeight.bold,
-                            color: AppColors.textPrimary,
+                            color: isDark ? AppDesign.textPrimaryDark : AppDesign.textPrimaryLight,
                             letterSpacing: 1.5,
                           ),
                         ),
                         const SizedBox(height: 8),
-                        const Text(
+                        Text(
                           "Tu bodega favorita, al toque.",
                           style: TextStyle(
                             fontSize: 16,
-                            color: AppColors.textSecondary,
+                            color: isDark ? AppDesign.textSecondaryDark : AppDesign.textSecondaryLight,
                             fontWeight: FontWeight.w400,
                           ),
                         ),
@@ -232,7 +221,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                           height: 24,
                           child: CircularProgressIndicator(
                             strokeWidth: 2.5,
-                            color: AppColors.primary,
+                            color: AppDesign.primaryBlue,
                           ),
                         ),
                         
@@ -241,7 +230,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                         Text(
                           _status,
                           style: TextStyle(
-                            color: AppColors.textSecondary.withOpacity(0.8),
+                            color: (isDark ? AppDesign.textSecondaryDark : AppDesign.textSecondaryLight).withOpacity(0.8),
                             fontSize: 13,
                             fontWeight: FontWeight.w500,
                           ),
@@ -263,7 +252,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
               child: Text(
                 "v1.0.0",
                 style: TextStyle(
-                  color: AppColors.textSecondary.withOpacity(0.5),
+                  color: (isDark ? AppDesign.textSecondaryDark : AppDesign.textSecondaryLight).withOpacity(0.5),
                   fontSize: 12,
                 ),
               ),

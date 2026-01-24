@@ -4,6 +4,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'dart:typed_data';
+import 'home_colors.dart'; // Importar helper de colores
 
 class TicketScreen extends StatelessWidget {
   final Map<String, dynamic> ticketData;
@@ -16,14 +17,18 @@ class TicketScreen extends StatelessWidget {
     final total = ticketData['total'];
     final qrData = ticketData['qr_data'];
     final userName = ticketData['formatted_name'];
+    final isDark = HomeColors.isDark(context);
 
     return Scaffold(
-      backgroundColor: Colors.grey[100],
+      backgroundColor: HomeColors.background(context),
       appBar: AppBar(
         title: const Text("Tu Ticket de Reserva"),
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black,
+        backgroundColor: HomeColors.surface(context),
+        foregroundColor: HomeColors.textPrimary(context),
         elevation: 0,
+        iconTheme: IconThemeData(
+          color: HomeColors.textPrimary(context), // Flecha atrás dinámica
+        ),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24.0),
@@ -33,76 +38,125 @@ class TicketScreen extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: HomeColors.surface(context),
                 borderRadius: BorderRadius.circular(16),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
+                    color: HomeColors.shadowLight(context),
                     blurRadius: 10,
                     offset: const Offset(0, 5),
-                  )
+                  ),
                 ],
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                   const Icon(Icons.check_circle, color: Colors.green, size: 60),
-                   const SizedBox(height: 16),
-                   const Text(
-                     "¡Reserva Confirmada!",
-                     style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-                   ),
-                   const SizedBox(height: 8),
-                   Text(
-                     "Cliente: $userName",
-                     style: const TextStyle(fontSize: 16, color: Colors.grey),
-                   ),
-                   const Divider(height: 40),
-                   
-                   // Lista de productos
-                   ListView.builder(
-                     shrinkWrap: true,
-                     physics: const NeverScrollableScrollPhysics(),
-                     itemCount: items.length,
-                     itemBuilder: (context, index) {
-                       final item = items[index];
-                       return Padding(
-                         padding: const EdgeInsets.symmetric(vertical: 4),
-                         child: Row(
-                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                           children: [
-                             Text("${item['quantity']}x ${item['product_name']}"),
-                             Text("S/${(item['quantity'] * item['unit_price']).toStringAsFixed(2)}"),
-                           ],
-                         ),
-                       );
-                     },
-                   ),
-                   
-                   const Divider(height: 40),
-                   Row(
-                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                     children: [
-                       const Text("TOTAL", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-                       Text("S/${total.toStringAsFixed(2)}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.blue)),
-                     ],
-                   ),
-                   const SizedBox(height: 30),
-                   
-                   // QR CODE
-                   QrImageView(
-                     data: qrData,
-                     version: QrVersions.auto,
-                     size: 200.0,
-                   ),
-                   const SizedBox(height: 10),
-                   const Text("Muestra este QR en bodega", style: TextStyle(fontSize: 12, color: Colors.grey)),
+                  const Icon(
+                    Icons.check_circle,
+                    color: HomeColors.success,
+                    size: 60,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    "¡Reserva Confirmada!",
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: HomeColors.textPrimary(context),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    "Cliente: $userName",
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: HomeColors.textSecondary(context),
+                    ),
+                  ),
+                  const Divider(height: 40),
+
+                  // Lista de productos
+                  ListView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: items.length,
+                    itemBuilder: (context, index) {
+                      final item = items[index];
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              "${item['quantity']}x ${item['product_name']}",
+                              style: TextStyle(
+                                color: HomeColors.textPrimary(context),
+                              ),
+                            ),
+                            Text(
+                              "S/${(item['quantity'] * item['unit_price']).toStringAsFixed(2)}",
+                              style: TextStyle(
+                                color: HomeColors.textPrimary(context),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+
+                  Divider(height: 40, color: HomeColors.divider(context)),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        "TOTAL",
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 18,
+                          color: HomeColors.textPrimary(context),
+                        ),
+                      ),
+                      Text(
+                        "S/${total.toStringAsFixed(2)}",
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 18,
+                          color: Colors.blue,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 30),
+
+                  // QR CODE
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors
+                          .white, // El QR siempre necesita fondo blanco para leerse
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: QrImageView(
+                      data: qrData,
+                      version: QrVersions.auto,
+                      size: 200.0,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    "Muestra este QR en bodega",
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: HomeColors.textMuted(context),
+                    ),
+                  ),
                 ],
               ),
             ),
-            
+
             const SizedBox(height: 30),
-            
+
             // BOTONES DE ACCIÓN
             SizedBox(
               width: double.infinity,
@@ -113,19 +167,29 @@ class TicketScreen extends StatelessWidget {
                 label: const Text("Descargar PDF"),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.redAccent,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
               ),
             ),
             const SizedBox(height: 16),
-             SizedBox(
+            SizedBox(
               width: double.infinity,
               height: 50,
               child: OutlinedButton(
-                onPressed: () => Navigator.popUntil(context, (route) => route.isFirst),
-                child: const Text("Volver al Inicio"),
-                 style: OutlinedButton.styleFrom(
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                onPressed: () =>
+                    Navigator.popUntil(context, (route) => route.isFirst),
+                child: Text(
+                  "Volver al Inicio",
+                  style: TextStyle(color: HomeColors.primary(context)),
+                ),
+                style: OutlinedButton.styleFrom(
+                  side: BorderSide(color: HomeColors.primary(context)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
               ),
             ),
@@ -156,7 +220,9 @@ class TicketScreen extends StatelessWidget {
                 padding: const pw.EdgeInsets.all(20),
                 decoration: pw.BoxDecoration(
                   color: primaryBlue,
-                  borderRadius: const pw.BorderRadius.all(pw.Radius.circular(8)),
+                  borderRadius: const pw.BorderRadius.all(
+                    pw.Radius.circular(8),
+                  ),
                 ),
                 child: pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -172,17 +238,14 @@ class TicketScreen extends StatelessWidget {
                     pw.SizedBox(height: 4),
                     pw.Text(
                       "Chek",
-                      style: pw.TextStyle(
-                        fontSize: 16,
-                        color: PdfColors.white,
-                      ),
+                      style: pw.TextStyle(fontSize: 16, color: PdfColors.white),
                     ),
                   ],
                 ),
               ),
-              
+
               pw.SizedBox(height: 30),
-              
+
               // Client info
               pw.Text(
                 "Cliente: ${ticketData['formatted_name']}",
@@ -192,11 +255,11 @@ class TicketScreen extends StatelessWidget {
                   fontWeight: pw.FontWeight.bold,
                 ),
               ),
-              
+
               pw.SizedBox(height: 20),
               pw.Divider(color: lightGray),
               pw.SizedBox(height: 10),
-              
+
               // Items list
               pw.Text(
                 "Productos Reservados:",
@@ -207,28 +270,30 @@ class TicketScreen extends StatelessWidget {
                 ),
               ),
               pw.SizedBox(height: 10),
-              
-              ...items.map((item) => pw.Padding(
-                padding: const pw.EdgeInsets.symmetric(vertical: 4),
-                child: pw.Row(
-                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                  children: [
-                    pw.Text(
-                      "${item['quantity']}x ${item['product_name']}",
-                      style: pw.TextStyle(fontSize: 11, color: darkGray),
-                    ),
-                    pw.Text(
-                      "S/${(item['quantity'] * item['unit_price']).toStringAsFixed(2)}",
-                      style: pw.TextStyle(fontSize: 11, color: darkGray),
-                    ),
-                  ],
+
+              ...items.map(
+                (item) => pw.Padding(
+                  padding: const pw.EdgeInsets.symmetric(vertical: 4),
+                  child: pw.Row(
+                    mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                    children: [
+                      pw.Text(
+                        "${item['quantity']}x ${item['product_name']}",
+                        style: pw.TextStyle(fontSize: 11, color: darkGray),
+                      ),
+                      pw.Text(
+                        "S/${(item['quantity'] * item['unit_price']).toStringAsFixed(2)}",
+                        style: pw.TextStyle(fontSize: 11, color: darkGray),
+                      ),
+                    ],
+                  ),
                 ),
-              )),
-              
+              ),
+
               pw.SizedBox(height: 10),
               pw.Divider(color: lightGray),
               pw.SizedBox(height: 10),
-              
+
               // Total
               pw.Row(
                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
@@ -251,9 +316,9 @@ class TicketScreen extends StatelessWidget {
                   ),
                 ],
               ),
-              
+
               pw.SizedBox(height: 30),
-              
+
               // QR Code centered
               pw.Center(
                 child: pw.Column(
@@ -262,7 +327,9 @@ class TicketScreen extends StatelessWidget {
                       padding: const pw.EdgeInsets.all(16),
                       decoration: pw.BoxDecoration(
                         border: pw.Border.all(color: lightGray, width: 2),
-                        borderRadius: const pw.BorderRadius.all(pw.Radius.circular(8)),
+                        borderRadius: const pw.BorderRadius.all(
+                          pw.Radius.circular(8),
+                        ),
                       ),
                       child: pw.BarcodeWidget(
                         barcode: pw.Barcode.qrCode(),
@@ -279,9 +346,9 @@ class TicketScreen extends StatelessWidget {
                   ],
                 ),
               ),
-              
+
               pw.Spacer(),
-              
+
               // Footer
               pw.Center(
                 child: pw.Text(

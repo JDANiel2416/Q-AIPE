@@ -5,22 +5,11 @@ import '../common/login_screen.dart';
 import 'home_screen.dart';
 import 'my_chats_screen.dart';
 import 'orders_history_screen.dart';
-
-// Paleta de colores compartida del tema claro
-class AppColors {
-  static const Color background = Color(0xFFF9FAFB);
-  static const Color surface = Color(0xFFFFFFFF);
-  static const Color primary = Color(0xFF0062FF);
-  static const Color primaryLight = Color(0xFFE6F0FF);
-  static const Color textPrimary = Color(0xFF111827);
-  static const Color textSecondary = Color(0xFF6B7280);
-  static const Color divider = Color(0xFFF3F4F6);
-  static const Color error = Color(0xFFEF4444);
-  static const Color shadowMedium = Color(0x14000000);
-}
+import 'home_colors.dart'; // Importar helper de colores
 
 /// Widget mixin que agrega funcionalidad de drawer animado a cualquier página
-mixin UserDrawerMixin<T extends StatefulWidget> on State<T>, TickerProviderStateMixin<T> {
+mixin UserDrawerMixin<T extends StatefulWidget>
+    on State<T>, TickerProviderStateMixin<T> {
   late AnimationController drawerController;
   bool isDrawerOpen = false;
   double drawerDragStart = 0;
@@ -68,7 +57,7 @@ mixin UserDrawerMixin<T extends StatefulWidget> on State<T>, TickerProviderState
   /// Manejador de actualización de swipe
   void onHorizontalDragUpdate(DragUpdateDetails details, double drawerWidth) {
     final delta = details.globalPosition.dx - drawerDragStart;
-    
+
     if (isDrawerOpen) {
       final newValue = 1.0 + (delta / drawerWidth);
       drawerController.value = newValue.clamp(0.0, 1.0);
@@ -81,7 +70,7 @@ mixin UserDrawerMixin<T extends StatefulWidget> on State<T>, TickerProviderState
   /// Manejador de fin de swipe
   void onHorizontalDragEnd(DragEndDetails details) {
     final velocity = details.velocity.pixelsPerSecond.dx;
-    
+
     if (velocity > 500) {
       openDrawer();
     } else if (velocity < -500) {
@@ -101,22 +90,22 @@ mixin UserDrawerMixin<T extends StatefulWidget> on State<T>, TickerProviderState
       child: Container(
         padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
-          color: AppColors.primaryLight.withOpacity(0.7),
+          color: HomeColors.primaryLight(context).withOpacity(0.7),
           shape: BoxShape.circle,
         ),
-        child: Icon(icon, color: AppColors.primary, size: 20),
+        child: Icon(icon, color: HomeColors.primary(context), size: 20),
       ),
     );
   }
 
   Widget buildDrawerOverlay(BuildContext context) {
     final drawerWidth = MediaQuery.of(context).size.width * 0.80;
-    
+
     return AnimatedBuilder(
       animation: drawerController,
       builder: (context, child) {
         if (drawerController.value == 0) return const SizedBox.shrink();
-        
+
         return Stack(
           children: [
             // Fondo oscuro que se desvanece
@@ -145,10 +134,10 @@ mixin UserDrawerMixin<T extends StatefulWidget> on State<T>, TickerProviderState
       width: MediaQuery.of(context).size.width * 0.80,
       height: double.infinity,
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: HomeColors.surface(context),
         boxShadow: [
           BoxShadow(
-            color: AppColors.shadowMedium,
+            color: HomeColors.shadowMedium(context),
             blurRadius: 20,
             offset: const Offset(4, 0),
           ),
@@ -162,7 +151,7 @@ mixin UserDrawerMixin<T extends StatefulWidget> on State<T>, TickerProviderState
             Container(
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
-                color: AppColors.primaryLight.withOpacity(0.5),
+                color: HomeColors.primaryLight(context).withOpacity(0.5),
                 borderRadius: const BorderRadius.only(
                   bottomLeft: Radius.circular(24),
                   bottomRight: Radius.circular(24),
@@ -174,38 +163,49 @@ mixin UserDrawerMixin<T extends StatefulWidget> on State<T>, TickerProviderState
                   Container(
                     padding: const EdgeInsets.all(3),
                     decoration: BoxDecoration(
-                      shape: BoxShape.circle, 
-                      color: AppColors.primary,
+                      shape: BoxShape.circle,
+                      color: HomeColors.primary(context),
                       boxShadow: [
                         BoxShadow(
-                          color: AppColors.primary.withOpacity(0.3),
+                          color: HomeColors.primary(context).withOpacity(0.3),
                           blurRadius: 12,
                           offset: const Offset(0, 4),
                         ),
                       ],
                     ),
-                    child: const CircleAvatar(
+                    child: CircleAvatar(
                       radius: 30,
-                      backgroundColor: AppColors.surface,
-                      child: Icon(Icons.person, color: AppColors.primary, size: 30),
+                      backgroundColor: HomeColors.surface(context),
+                      child: Icon(
+                        Icons.person,
+                        color: HomeColors.primary(context),
+                        size: 30,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    userFirstName, 
-                    style: const TextStyle(
-                      color: AppColors.textPrimary, 
-                      fontSize: 20, 
+                    userFirstName,
+                    style: TextStyle(
+                      color: HomeColors.textPrimary(context),
+                      fontSize: 20,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
                   Row(
                     children: [
-                      Icon(Icons.verified, color: AppColors.primary, size: 14),
+                      Icon(
+                        Icons.verified,
+                        color: HomeColors.primary(context),
+                        size: 14,
+                      ),
                       const SizedBox(width: 4),
-                      const Text(
-                        "Verificado RENIEC", 
-                        style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                      Text(
+                        "Verificado RENIEC",
+                        style: TextStyle(
+                          color: HomeColors.textSecondary(context),
+                          fontSize: 12,
+                        ),
                       ),
                     ],
                   ),
@@ -213,7 +213,7 @@ mixin UserDrawerMixin<T extends StatefulWidget> on State<T>, TickerProviderState
               ),
             ),
             const SizedBox(height: 8),
-            
+
             // OPCIONES DEL MENÚ
             Expanded(
               child: ListView(
@@ -227,32 +227,69 @@ mixin UserDrawerMixin<T extends StatefulWidget> on State<T>, TickerProviderState
                       (route) => false,
                     );
                   }),
-                  _buildDrawerItem(context, Icons.history_rounded, "Historial de Pedidos", () {
-                    closeDrawer();
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(builder: (_) => const OrdersHistoryScreen()),
-                    );
-                  }),
-                  _buildDrawerItem(context, Icons.chat_bubble_outline_rounded, "Mis Chats", () {
-                    closeDrawer();
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(builder: (_) => const MyChatsScreen()),
-                    );
-                  }),
-                  _buildDrawerItem(context, Icons.favorite_outline_rounded, "Favoritos", () {}),
-                  _buildDrawerItem(context, Icons.place_outlined, "Mis Direcciones", () {}),
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 16),
-                    child: Divider(color: AppColors.divider, height: 30),
+                  _buildDrawerItem(
+                    context,
+                    Icons.history_rounded,
+                    "Historial de Pedidos",
+                    () {
+                      closeDrawer();
+                      Navigator.pushReplacement(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const OrdersHistoryScreen(),
+                        ),
+                      );
+                    },
                   ),
-                  _buildDrawerItem(context, Icons.settings_outlined, "Configuración", () {}),
-                  _buildDrawerItem(context, Icons.help_outline_rounded, "Ayuda y Soporte", () {}),
+                  _buildDrawerItem(
+                    context,
+                    Icons.chat_bubble_outline_rounded,
+                    "Mis Chats",
+                    () {
+                      closeDrawer();
+                      Navigator.pushReplacement(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const MyChatsScreen(),
+                        ),
+                      );
+                    },
+                  ),
+                  _buildDrawerItem(
+                    context,
+                    Icons.favorite_outline_rounded,
+                    "Favoritos",
+                    () {},
+                  ),
+                  _buildDrawerItem(
+                    context,
+                    Icons.place_outlined,
+                    "Mis Direcciones",
+                    () {},
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Divider(
+                      color: HomeColors.divider(context),
+                      height: 30,
+                    ),
+                  ),
+                  _buildDrawerItem(
+                    context,
+                    Icons.settings_outlined,
+                    "Configuración",
+                    () {},
+                  ),
+                  _buildDrawerItem(
+                    context,
+                    Icons.help_outline_rounded,
+                    "Ayuda y Soporte",
+                    () {},
+                  ),
                 ],
               ),
             ),
-            
+
             // BOTÓN CERRAR SESIÓN
             Padding(
               padding: const EdgeInsets.all(24),
@@ -260,57 +297,80 @@ mixin UserDrawerMixin<T extends StatefulWidget> on State<T>, TickerProviderState
                 onTap: () async {
                   await SessionService().logout();
                   if (mounted) {
-                    Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
+                    Navigator.pushReplacement(
+                      context,
+                      MaterialPageRoute(builder: (_) => const LoginScreen()),
+                    );
                   }
                 },
                 borderRadius: BorderRadius.circular(12),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 14,
+                    horizontal: 16,
+                  ),
                   decoration: BoxDecoration(
-                    color: AppColors.error.withOpacity(0.08),
+                    color: HomeColors.error.withOpacity(0.08),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppColors.error.withOpacity(0.2))
+                    border: Border.all(
+                      color: HomeColors.error.withOpacity(0.2),
+                    ),
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
-                    children: const [
-                      Icon(Icons.logout_rounded, color: AppColors.error, size: 20),
-                      SizedBox(width: 10),
-                      Text("Cerrar Sesión", style: TextStyle(color: AppColors.error, fontWeight: FontWeight.w600)),
+                    children: [
+                      const Icon(
+                        Icons.logout_rounded,
+                        color: HomeColors.error,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 10),
+                      const Text(
+                        "Cerrar Sesión",
+                        style: TextStyle(
+                          color: HomeColors.error,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                     ],
                   ),
                 ),
               ),
-            )
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildDrawerItem(BuildContext context, IconData icon, String title, VoidCallback onTap) {
+  Widget _buildDrawerItem(
+    BuildContext context,
+    IconData icon,
+    String title,
+    VoidCallback onTap,
+  ) {
     return Container(
       margin: const EdgeInsets.only(bottom: 4),
       child: ListTile(
         leading: Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: AppColors.primaryLight.withOpacity(0.5),
+            color: HomeColors.primaryLight(context).withOpacity(0.5),
             borderRadius: BorderRadius.circular(10),
           ),
-          child: Icon(icon, color: AppColors.primary, size: 20),
+          child: Icon(icon, color: HomeColors.primary(context), size: 20),
         ),
         title: Text(
-          title, 
-          style: const TextStyle(
-            color: AppColors.textPrimary, 
+          title,
+          style: TextStyle(
+            color: HomeColors.textPrimary(context),
             fontSize: 15,
             fontWeight: FontWeight.w500,
           ),
         ),
         onTap: onTap,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        hoverColor: AppColors.primaryLight.withOpacity(0.3),
+        hoverColor: HomeColors.primaryLight(context).withOpacity(0.3),
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
       ),
     );

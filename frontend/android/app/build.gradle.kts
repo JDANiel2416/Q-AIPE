@@ -57,7 +57,7 @@ flutter {
 
 dependencies {
     // Esta línea permite que MainActivity.kt vea las clases de Yandex
-    implementation("com.yandex.android:maps.mobile:4.6.1-lite")
+    implementation("com.yandex.android:maps.mobile:4.6.1-full")
     implementation("com.huawei.hms:push:6.12.0.300")
     
     // Import the Firebase BoM
