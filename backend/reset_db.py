@@ -6,7 +6,7 @@ from sqlalchemy import text # <--- Necesitamos esto para SQL crudo
 sys.path.append(os.getcwd())
 
 from app.db.session import SessionLocal, engine
-from app.models.tables import Base, User, Bodega, MasterProduct, StoreInventory
+from app.models.tables import Base, User, Bodega, MasterProduct, StoreInventory, Category, SubCategory
 
 def migrate_database():
     """
@@ -46,6 +46,22 @@ def migrate_database():
         except Exception as e:
             print(f"     ⚠️ attachment_data: {e}")
         
+        # 4. Campos nuevos para Categorías
+        print("   - Migrando tabla 'categories'...")
+        try:
+            connection.execute(text("ALTER TABLE categories ADD COLUMN IF NOT EXISTS icon_name VARCHAR"))
+            print("     ✅ Columna 'icon_name' verificada")
+        except Exception as e:
+            print(f"     ⚠️ icon_name: {e}")
+
+        # 5. FK category_id en MasterProduct
+        print("   - Migrando tabla 'master_products'...")
+        try:
+            connection.execute(text("ALTER TABLE master_products ADD COLUMN IF NOT EXISTS category_id INTEGER REFERENCES categories(id)"))
+            print("     ✅ Columna 'category_id' verificada")
+        except Exception as e:
+            print(f"     ⚠️ category_id: {e}")
+        
         connection.commit()
     
     print("🎉 MIGRACIONES COMPLETADAS")
@@ -65,6 +81,7 @@ def reset_database():
         connection.execute(text("DROP TABLE IF EXISTS master_products CASCADE;"))
         connection.execute(text("DROP TABLE IF EXISTS bodegas CASCADE;"))
         connection.execute(text("DROP TABLE IF EXISTS users CASCADE;"))
+        connection.execute(text("DROP TABLE IF EXISTS categories CASCADE;")) # Added for Category model
         connection.commit()
 
     # 2. BORRAR CUALQUIER OTRA COSA QUE QUEDE
@@ -79,6 +96,44 @@ def reset_database():
     
     try:
         print("🌱 Sembrando datos frescos...")
+
+        # --- CATEGORIAS ---
+        print("   - Creando categorías...")
+        categories_data = [
+            {"name": "Bebidas", "icon": "local_drink_outlined"},
+            {"name": "Abarrotes", "icon": "shopping_basket_outlined"},
+            {"name": "Limpieza", "icon": "cleaning_services_outlined"},
+            {"name": "Cuidado Personal", "icon": "wash_outlined"},
+            {"name": "Otros", "icon": "category_outlined"},
+        ]
+        
+        cat_objects = {}
+        for c in categories_data:
+            cat_obj = Category(name=c["name"], icon_name=c["icon"])
+            db.add(cat_obj)
+            cat_objects[c["name"]] = cat_obj # Guardar referencia para productos
+        
+        # --- SUBCATEGORIAS (NUEVO) ---
+        print("   - Creando subcategorías...")
+        seed_subcats = {
+            "Bebidas": ["Gaseosas", "Agua", "Cervezas", "Energizantes", "Jugos", "Licores", "Vinos"],
+            "Abarrotes": ["Arroz", "Azúcar", "Aceites", "Fideos", "Conservas", "Menestras", "Snacks", "Golosinas", "Panadería", "Embutidos", "Verduras", "Frutas", "Condimentos"],
+            "Limpieza": ["Detergentes", "Jabones", "Desinfectantes", "Papel Higiénico"],
+            "Cuidado Personal": ["Shampoo", "Desodorante", "Pasta Dental", "Farmacia", "Cremas"],
+            "Otros": ["Mascotas", "Hogar", "Útiles Escolares", "Tecnología"]
+        }
+        
+        subcat_objects = {} # Nombre -> Obj
+        
+        for p_name, subs in seed_subcats.items():
+            if p_name in cat_objects:
+                parent_id = cat_objects[p_name].id
+                for s_name in subs:
+                    sub = SubCategory(name=s_name, category_id=parent_id)
+                    db.add(sub)
+                    subcat_objects[s_name] = sub
+
+        db.commit()
 
         # --- USUARIOS ---
         don_lucho = User(
@@ -113,13 +168,14 @@ def reset_database():
         db.commit()
 
         # --- PRODUCTOS ---
-        p1 = MasterProduct(name="Arroz Costeño Graneadito", category="Abarrotes", synonyms=["arroz", "kilo de arroz"], default_unit="kg")
-        p2 = MasterProduct(name="Cerveza Pilsen Callao 630ml", category="Licores", synonyms=["chela", "birra", "pilsen"], default_unit="botella")
-        p3 = MasterProduct(name="Coca Cola 1.5L", category="Bebidas", synonyms=["gaseosa", "coca"], default_unit="botella")
-        p4 = MasterProduct(name="Inca Kola 3L", category="Bebidas", synonyms=["gaseosa", "inka"], default_unit="botella")
-        p5 = MasterProduct(name="Inca Kola 2L", category="Bebidas", synonyms=["gaseosa", "inka"], default_unit="botella")
-        p6 = MasterProduct(name="Inca Kola 1.5L", category="Bebidas", synonyms=["gaseosa", "inka"], default_unit="botella")
-        p7 = MasterProduct(name="Inca Kola 500ml", category="Bebidas", synonyms=["gaseosa", "inka", "personal"], default_unit="botella")
+        # Usamos el mapa cat_objects para obtener los IDs
+        p1 = MasterProduct(name="Arroz Costeño Graneadito", category="Abarrotes", category_id=cat_objects["Abarrotes"].id, synonyms=["arroz", "kilo de arroz"], default_unit="kg")
+        p2 = MasterProduct(name="Cerveza Pilsen Callao 630ml", category="Licores", category_id=cat_objects["Licores"].id, synonyms=["chela", "birra", "pilsen"], default_unit="botella")
+        p3 = MasterProduct(name="Coca Cola 1.5L", category="Bebidas", category_id=cat_objects["Bebidas"].id, synonyms=["gaseosa", "coca"], default_unit="botella")
+        p4 = MasterProduct(name="Inca Kola 3L", category="Bebidas", category_id=cat_objects["Bebidas"].id, synonyms=["gaseosa", "inka"], default_unit="botella")
+        p5 = MasterProduct(name="Inca Kola 2L", category="Bebidas", category_id=cat_objects["Bebidas"].id, synonyms=["gaseosa", "inka"], default_unit="botella")
+        p6 = MasterProduct(name="Inca Kola 1.5L", category="Bebidas", category_id=cat_objects["Bebidas"].id, synonyms=["gaseosa", "inka"], default_unit="botella")
+        p7 = MasterProduct(name="Inca Kola 500ml", category="Bebidas", category_id=cat_objects["Bebidas"].id, synonyms=["gaseosa", "inka", "personal"], default_unit="botella")
 
         db.add_all([p1, p2, p3, p4, p5, p6, p7])
         db.commit()

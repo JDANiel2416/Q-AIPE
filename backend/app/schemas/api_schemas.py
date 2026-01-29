@@ -37,6 +37,7 @@ class ProductItem(BaseModel):
 class ProductCreateRequest(BaseModel):
     name: str               # "Agua de Mesa"
     category: str           # "Bebidas"
+    subcategory_id: Optional[int] = None # NUEVO
     price: float            # 2.50
     stock: int              # 50
     attributes: Dict[str, Any] # {"marca": "San Luis", "capacidad": "1L"}

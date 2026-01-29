@@ -12,39 +12,35 @@ import 'bodeguero_colors.dart';
 
 class BodegueroScreen extends StatefulWidget {
   final bool isEmbedded;
-  
+
   const BodegueroScreen({super.key, this.isEmbedded = false});
 
   @override
   State<BodegueroScreen> createState() => _BodegueroScreenState();
 }
 
-class _BodegueroScreenState extends State<BodegueroScreen> with SingleTickerProviderStateMixin {
+class _BodegueroScreenState extends State<BodegueroScreen>
+    with SingleTickerProviderStateMixin {
   final ApiService _api = ApiService();
   List<dynamic> _products = [];
   bool _isLoading = true;
   String _userId = "";
-  
+
   // Búsqueda
   final TextEditingController _searchCtrl = TextEditingController();
   String _searchQuery = "";
-  
+
   // Tab Controller eliminado
   // late TabController _tabController; -> Reemplazado por PageController
-  
+
   // Controlador de páginas para sincronización perfecta
   late final PageController _pageController;
-  
+
   // Categorías con iconos
-  final List<Map<String, dynamic>> _categories = [
-    {'name': 'Bebidas', 'icon': Icons.local_drink_outlined},
-    {'name': 'Abarrotes', 'icon': Icons.shopping_basket_outlined},
-    {'name': 'Limpieza', 'icon': Icons.cleaning_services_outlined},
-    {'name': 'Otros', 'icon': Icons.category_outlined},
-  ];
+  // Categorías con iconos (Dinámicas)
+  List<Map<String, dynamic>> _categories = [];
+  bool _loadingCategories = true;
 
-
-  
   // Índice actual del tab para sincronizar UI en tiempo real
   int _currentTabIndex = 0;
   // Notificador para posición continua de la píldora
@@ -55,7 +51,7 @@ class _BodegueroScreenState extends State<BodegueroScreen> with SingleTickerProv
   @override
   void initState() {
     super.initState();
-    
+
     SystemChrome.setSystemUIOverlayStyle(
       const SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
@@ -64,12 +60,58 @@ class _BodegueroScreenState extends State<BodegueroScreen> with SingleTickerProv
         systemNavigationBarIconBrightness: Brightness.dark,
       ),
     );
-    
+
     _pageController = PageController();
     _pillPositionNotifier = ValueNotifier<double>(0.0);
     // Escuchar cambios de scroll en tiempo real
     _pageController.addListener(_handlePageScroll);
-    _loadData();
+    // Escuchar cambios de scroll en tiempo real
+    _pageController.addListener(_handlePageScroll);
+    _loadCategories(); // Primero categorías, luego datos
+  }
+
+  Future<void> _loadCategories() async {
+    final cats = await _api.getCategories();
+
+    if (mounted) {
+      setState(() {
+        if (cats.isNotEmpty) {
+          _categories = cats.map((cat) {
+            IconData icon = Icons.category_outlined;
+            // Asignación simple de iconos basada en nombre
+            final n = cat.name.toLowerCase();
+            if (n.contains('bebida'))
+              icon = Icons.local_drink_outlined;
+            else if (n.contains('abarrote'))
+              icon = Icons.shopping_basket_outlined;
+            else if (n.contains('limpieza') || n.contains('aseo'))
+              icon = Icons.cleaning_services_outlined;
+            else if (n.contains('fruta') || n.contains('verdura'))
+              icon = Icons.eco_outlined;
+            else if (n.contains('pan'))
+              icon = Icons.breakfast_dining_outlined;
+            else if (n.contains('carne') || n.contains('pollo'))
+              icon = Icons.set_meal_outlined;
+            else if (n.contains('mascota'))
+              icon = Icons.pets;
+
+            // Si el backend envía icono (futuro), podríamos usarlo
+
+            return {'name': cat.name, 'icon': icon, 'id': cat.id};
+          }).toList();
+        } else {
+          _categories = [
+            {'name': 'Bebidas', 'icon': Icons.local_drink_outlined},
+            {'name': 'Abarrotes', 'icon': Icons.shopping_basket_outlined},
+            {'name': 'Limpieza', 'icon': Icons.cleaning_services_outlined},
+            {'name': 'Otros', 'icon': Icons.category_outlined},
+          ];
+        }
+        _loadingCategories = false;
+      });
+      // Cargar productos después de tener categorías configuradas
+      _loadData();
+    }
   }
 
   @override
@@ -84,9 +126,9 @@ class _BodegueroScreenState extends State<BodegueroScreen> with SingleTickerProv
   // Manejar scroll de página para actualización en tiempo real
   void _handlePageScroll() {
     if (!_pageController.hasClients) return;
-    
+
     final pageValue = _pageController.page ?? 0.0;
-    
+
     // Sincronizar el notificador si no estamos arrastrando la BARRA manualmente
     if (!_isDraggingBar) {
       _pillPositionNotifier.value = pageValue;
@@ -102,21 +144,31 @@ class _BodegueroScreenState extends State<BodegueroScreen> with SingleTickerProv
   }
 
   List<dynamic> _getProductsForCategory(String category) {
-    var filtered = _products.where((p) => (p['category'] ?? "Otros") == category).toList();
-    
+    var filtered = _products
+        .where((p) => (p['category'] ?? "Otros") == category)
+        .toList();
+
     if (_searchQuery.isNotEmpty) {
-      filtered = filtered.where((p) => 
-        p['name'].toString().toLowerCase().contains(_searchQuery.toLowerCase())
-      ).toList();
+      filtered = filtered
+          .where(
+            (p) => p['name'].toString().toLowerCase().contains(
+              _searchQuery.toLowerCase(),
+            ),
+          )
+          .toList();
     }
-    
-    filtered.sort((a, b) => a['name'].toString().compareTo(b['name'].toString()));
-    
+
+    filtered.sort(
+      (a, b) => a['name'].toString().compareTo(b['name'].toString()),
+    );
+
     return filtered;
   }
-  
+
   int _getProductCount(String category) {
-    return _products.where((p) => (p['category'] ?? "Otros") == category).length;
+    return _products
+        .where((p) => (p['category'] ?? "Otros") == category)
+        .length;
   }
 
   Future<void> _loadData() async {
@@ -124,7 +176,7 @@ class _BodegueroScreenState extends State<BodegueroScreen> with SingleTickerProv
     final uid = await SessionService().getUserId();
     if (uid != null) {
       _userId = uid;
-      
+
       final data = await _api.getMyInventory(uid);
       setState(() {
         if (data is Map && data['products'] != null) {
@@ -144,20 +196,26 @@ class _BodegueroScreenState extends State<BodegueroScreen> with SingleTickerProv
       product['in_stock'] = value;
     });
 
-    final success = await _api.toggleStock(_userId, product['product_id'], value);
-    
+    final success = await _api.toggleStock(
+      _userId,
+      product['product_id'],
+      value,
+    );
+
     if (!success) {
       setState(() {
         product['in_stock'] = !value;
       });
-      if(mounted) {
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text("Error de conexión"),
             backgroundColor: BColors.error,
             behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          )
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
         );
       }
     }
@@ -165,8 +223,8 @@ class _BodegueroScreenState extends State<BodegueroScreen> with SingleTickerProv
 
   void _navigateToAddProduct() async {
     final bool? result = await Navigator.push(
-      context, 
-      MaterialPageRoute(builder: (_) => const AddProductScreen())
+      context,
+      MaterialPageRoute(builder: (_) => const AddProductScreen()),
     );
 
     if (result == true) {
@@ -182,26 +240,32 @@ class _BodegueroScreenState extends State<BodegueroScreen> with SingleTickerProv
         child: Column(
           children: [
             _buildAppBar(),
-            
+
             // Glassmorphism Category Bar
-            if (!_isLoading)
+            if (!_isLoading && !_loadingCategories && _categories.isNotEmpty)
               _buildGlassCategoryBar(),
-            
+
             // Barra de búsqueda
-            if (!_isLoading)
-              _buildSearchBar(),
-            
+            if (!_isLoading) _buildSearchBar(),
+
             // Lista de productos
             // Lista de productos (PageView para control total del scroll)
             Expanded(
-              child: _isLoading
+              child: (_isLoading || _loadingCategories)
                   ? Center(
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          CircularProgressIndicator(color: BColors.primary(context)),
+                          CircularProgressIndicator(
+                            color: BColors.primary(context),
+                          ),
                           const SizedBox(height: 16),
-                          Text("Cargando productos...", style: TextStyle(color: BColors.textSecondary(context))),
+                          Text(
+                            "Cargando inventario...",
+                            style: TextStyle(
+                              color: BColors.textSecondary(context),
+                            ),
+                          ),
                         ],
                       ),
                     )
@@ -233,7 +297,10 @@ class _BodegueroScreenState extends State<BodegueroScreen> with SingleTickerProv
           ),
           child: FloatingActionButton.extended(
             onPressed: _navigateToAddProduct,
-            label: Text("Agregar", style: TextStyle(fontWeight: FontWeight.bold)),
+            label: Text(
+              "Agregar",
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
             icon: Icon(Icons.add),
             backgroundColor: Colors.transparent,
             foregroundColor: Colors.white,
@@ -260,12 +327,16 @@ class _BodegueroScreenState extends State<BodegueroScreen> with SingleTickerProv
                   color: BColors.primaryLight(context).withOpacity(0.7),
                   shape: BoxShape.circle,
                 ),
-                child: Icon(Icons.arrow_back_ios_new, color: BColors.primary(context), size: 18),
+                child: Icon(
+                  Icons.arrow_back_ios_new,
+                  color: BColors.primary(context),
+                  size: 18,
+                ),
               ),
             ),
             const SizedBox(width: 16),
           ],
-          
+
           // Title
           Expanded(
             child: Column(
@@ -281,12 +352,15 @@ class _BodegueroScreenState extends State<BodegueroScreen> with SingleTickerProv
                 ),
                 Text(
                   "${_products.length} productos",
-                  style: TextStyle(color: BColors.textSecondary(context), fontSize: 13),
+                  style: TextStyle(
+                    color: BColors.textSecondary(context),
+                    fontSize: 13,
+                  ),
                 ),
               ],
             ),
           ),
-          
+
           // Stats icon
           Container(
             padding: const EdgeInsets.all(10),
@@ -294,7 +368,11 @@ class _BodegueroScreenState extends State<BodegueroScreen> with SingleTickerProv
               color: BColors.primaryLight(context),
               shape: BoxShape.circle,
             ),
-            child: Icon(Icons.inventory_2_outlined, color: BColors.primary(context), size: 20),
+            child: Icon(
+              Icons.inventory_2_outlined,
+              color: BColors.primary(context),
+              size: 20,
+            ),
           ),
         ],
       ),
@@ -334,7 +412,7 @@ class _BodegueroScreenState extends State<BodegueroScreen> with SingleTickerProv
               builder: (context, constraints) {
                 final double totalWidth = constraints.maxWidth;
                 final double itemWidth = totalWidth / _categories.length;
-                
+
                 return GestureDetector(
                   onHorizontalDragStart: (_) {
                     setState(() {
@@ -345,24 +423,30 @@ class _BodegueroScreenState extends State<BodegueroScreen> with SingleTickerProv
                     final delta = details.primaryDelta ?? 0;
                     if (delta != 0 && _pageController.hasClients) {
                       // 1. Calcular nueva posición de la píldora (lógica visual)
-                      final double deltaIndex = delta / itemWidth; // Drag derecho es positivo
+                      final double deltaIndex =
+                          delta / itemWidth; // Drag derecho es positivo
                       // Importante: PageView funciona al revés que la intuición visual directa en drag?
                       // Normal: swipe left (delta negativo) -> avanza pagina (index aumenta).
                       // Drag pildora derecha (delta positivo) -> queremos avanzar pagina (index aumenta).
                       // Pero el scroll offset del PageView: aumentar offset -> avanza pagina.
-                      
-                      double targetPage = _pillPositionNotifier.value + deltaIndex;
-                      targetPage = targetPage.clamp(0.0, _categories.length - 1.0);
-                      
+
+                      double targetPage =
+                          _pillPositionNotifier.value + deltaIndex;
+                      targetPage = targetPage.clamp(
+                        0.0,
+                        _categories.length - 1.0,
+                      );
+
                       // Actualizar UI de la píldora inmediatamente
                       _pillPositionNotifier.value = targetPage;
-                      
+
                       // 2. Mover el PageView píxel por píxel (jumpTo)
                       // page = pixels / viewportDimension
                       // pixels = page * viewportDimension
-                      final double viewportWidth = _pageController.position.viewportDimension;
+                      final double viewportWidth =
+                          _pageController.position.viewportDimension;
                       final double targetPixels = targetPage * viewportWidth;
-                      
+
                       _pageController.jumpTo(targetPixels);
                     }
                   },
@@ -385,7 +469,7 @@ class _BodegueroScreenState extends State<BodegueroScreen> with SingleTickerProv
                         valueListenable: _pillPositionNotifier,
                         builder: (context, position, child) {
                           final leftOffset = position * itemWidth;
-                          
+
                           return Positioned(
                             left: leftOffset,
                             top: 0,
@@ -394,14 +478,19 @@ class _BodegueroScreenState extends State<BodegueroScreen> with SingleTickerProv
                             child: Container(
                               decoration: BoxDecoration(
                                 gradient: LinearGradient(
-                                  colors: [BColors.primary(context), BColors.primaryDark(context)],
+                                  colors: [
+                                    BColors.primary(context),
+                                    BColors.primaryDark(context),
+                                  ],
                                   begin: Alignment.topLeft,
                                   end: Alignment.bottomRight,
                                 ),
                                 borderRadius: BorderRadius.circular(30),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: BColors.primary(context).withOpacity(0.4),
+                                    color: BColors.primary(
+                                      context,
+                                    ).withOpacity(0.4),
                                     blurRadius: 12,
                                     offset: const Offset(0, 4),
                                   ),
@@ -411,13 +500,13 @@ class _BodegueroScreenState extends State<BodegueroScreen> with SingleTickerProv
                           );
                         },
                       ),
-                      
+
                       // Items transparentes encima
                       Row(
                         children: _categories.asMap().entries.map((entry) {
                           final index = entry.key;
                           final category = entry.value;
-                          
+
                           return Expanded(
                             child: GestureDetector(
                               onTap: () {
@@ -438,7 +527,9 @@ class _BodegueroScreenState extends State<BodegueroScreen> with SingleTickerProv
                                   // Lógica de resaltado: cuando más del 50% de la píldora está encima (redondeo)
                                   final isActive = position.round() == index;
                                   final opacity = isActive ? 1.0 : 0.7;
-                                  final color = isActive ? Colors.white : BColors.textSecondary(context);
+                                  final color = isActive
+                                      ? Colors.white
+                                      : BColors.textSecondary(context);
 
                                   return Column(
                                     mainAxisAlignment: MainAxisAlignment.center,
@@ -453,7 +544,9 @@ class _BodegueroScreenState extends State<BodegueroScreen> with SingleTickerProv
                                         category['name'],
                                         style: TextStyle(
                                           fontSize: 10,
-                                          fontWeight: isActive ? FontWeight.bold : FontWeight.w500,
+                                          fontWeight: isActive
+                                              ? FontWeight.bold
+                                              : FontWeight.w500,
                                           color: color,
                                         ),
                                         maxLines: 1,
@@ -504,7 +597,11 @@ class _BodegueroScreenState extends State<BodegueroScreen> with SingleTickerProv
             prefixIcon: Icon(Icons.search, color: BColors.primary(context)),
             suffixIcon: _searchQuery.isNotEmpty
                 ? IconButton(
-                    icon: Icon(Icons.clear, color: BColors.textMuted(context), size: 20),
+                    icon: Icon(
+                      Icons.clear,
+                      color: BColors.textMuted(context),
+                      size: 20,
+                    ),
                     onPressed: () {
                       _searchCtrl.clear();
                       setState(() => _searchQuery = "");
@@ -517,7 +614,10 @@ class _BodegueroScreenState extends State<BodegueroScreen> with SingleTickerProv
               borderRadius: BorderRadius.circular(16),
               borderSide: BorderSide.none,
             ),
-            contentPadding: const EdgeInsets.symmetric(vertical: 14, horizontal: 20),
+            contentPadding: const EdgeInsets.symmetric(
+              vertical: 14,
+              horizontal: 20,
+            ),
           ),
         ),
       ),
@@ -526,7 +626,7 @@ class _BodegueroScreenState extends State<BodegueroScreen> with SingleTickerProv
 
   Widget _buildCategoryView(String category) {
     final products = _getProductsForCategory(category);
-    
+
     if (products.isEmpty) {
       return Center(
         child: Column(
@@ -539,16 +639,20 @@ class _BodegueroScreenState extends State<BodegueroScreen> with SingleTickerProv
                 shape: BoxShape.circle,
                 color: BColors.primaryLight(context),
               ),
-              child: Icon(Icons.inventory_2_outlined, size: 50, color: BColors.primary(context)),
+              child: Icon(
+                Icons.inventory_2_outlined,
+                size: 50,
+                color: BColors.primary(context),
+              ),
             ),
             const SizedBox(height: 24),
             Text(
-              _searchQuery.isEmpty 
+              _searchQuery.isEmpty
                   ? "No tienes productos en $category"
                   : "No se encontraron productos",
               style: TextStyle(
-                color: BColors.textPrimary(context), 
-                fontSize: 18, 
+                color: BColors.textPrimary(context),
+                fontSize: 18,
                 fontWeight: FontWeight.bold,
               ),
             ),
@@ -557,7 +661,10 @@ class _BodegueroScreenState extends State<BodegueroScreen> with SingleTickerProv
               _searchQuery.isEmpty
                   ? "¡Agrega tu primer producto!"
                   : "Intenta con otra búsqueda",
-              style: TextStyle(color: BColors.textSecondary(context), fontSize: 14),
+              style: TextStyle(
+                color: BColors.textSecondary(context),
+                fontSize: 14,
+              ),
             ),
             if (_searchQuery.isEmpty) ...[
               const SizedBox(height: 24),
@@ -568,8 +675,13 @@ class _BodegueroScreenState extends State<BodegueroScreen> with SingleTickerProv
                 style: ElevatedButton.styleFrom(
                   backgroundColor: BColors.primary(context),
                   foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 14,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
                 ),
               ),
             ],
@@ -589,7 +701,7 @@ class _BodegueroScreenState extends State<BodegueroScreen> with SingleTickerProv
       itemBuilder: (ctx, i) {
         final prod = products[i];
         final bool inStock = prod['in_stock'];
-        
+
         return GestureDetector(
           onTap: () async {
             final result = await Navigator.push(
@@ -608,7 +720,9 @@ class _BodegueroScreenState extends State<BodegueroScreen> with SingleTickerProv
               color: BColors.surface(context),
               borderRadius: BorderRadius.circular(18),
               border: Border.all(
-                color: inStock ? BColors.border(context) : BColors.textMuted(context).withOpacity(0.3),
+                color: inStock
+                    ? BColors.border(context)
+                    : BColors.textMuted(context).withOpacity(0.3),
               ),
               boxShadow: [
                 BoxShadow(
@@ -626,9 +740,12 @@ class _BodegueroScreenState extends State<BodegueroScreen> with SingleTickerProv
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      gradient: inStock 
+                      gradient: inStock
                           ? LinearGradient(
-                              colors: [BColors.success.withOpacity(0.15), BColors.success.withOpacity(0.05)],
+                              colors: [
+                                BColors.success.withOpacity(0.15),
+                                BColors.success.withOpacity(0.05),
+                              ],
                             )
                           : null,
                       color: inStock ? null : BColors.surfaceVariant(context),
@@ -636,12 +753,14 @@ class _BodegueroScreenState extends State<BodegueroScreen> with SingleTickerProv
                     ),
                     child: Icon(
                       inStock ? Icons.check_circle : Icons.pause_circle_outline,
-                      color: inStock ? BColors.success : BColors.textMuted(context),
+                      color: inStock
+                          ? BColors.success
+                          : BColors.textMuted(context),
                       size: 26,
                     ),
                   ),
                   const SizedBox(width: 14),
-                  
+
                   // Product info
                   Expanded(
                     child: Column(
@@ -661,7 +780,10 @@ class _BodegueroScreenState extends State<BodegueroScreen> with SingleTickerProv
                         Row(
                           children: [
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 4,
+                              ),
                               decoration: BoxDecoration(
                                 color: BColors.primaryLight(context),
                                 borderRadius: BorderRadius.circular(8),
@@ -676,7 +798,11 @@ class _BodegueroScreenState extends State<BodegueroScreen> with SingleTickerProv
                               ),
                             ),
                             const SizedBox(width: 10),
-                            Icon(Icons.inventory_2_outlined, size: 14, color: BColors.textMuted(context)),
+                            Icon(
+                              Icons.inventory_2_outlined,
+                              size: 14,
+                              color: BColors.textMuted(context),
+                            ),
                             const SizedBox(width: 4),
                             Text(
                               "${prod['stock']} uds",
@@ -690,7 +816,7 @@ class _BodegueroScreenState extends State<BodegueroScreen> with SingleTickerProv
                       ],
                     ),
                   ),
-                  
+
                   // Toggle switch with label
                   Column(
                     children: [
@@ -709,7 +835,9 @@ class _BodegueroScreenState extends State<BodegueroScreen> with SingleTickerProv
                         inStock ? "En stock" : "Pausado",
                         style: TextStyle(
                           fontSize: 10,
-                          color: inStock ? BColors.success : BColors.textMuted(context),
+                          color: inStock
+                              ? BColors.success
+                              : BColors.textMuted(context),
                           fontWeight: FontWeight.w500,
                         ),
                       ),

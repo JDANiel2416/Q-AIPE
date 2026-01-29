@@ -6,6 +6,7 @@ import 'home_screen.dart';
 import 'my_chats_screen.dart';
 import 'orders_history_screen.dart';
 import 'home_colors.dart'; // Importar helper de colores
+import '../../services/theme_provider.dart'; // Importar ThemeProvider
 
 /// Widget mixin que agrega funcionalidad de drawer animado a cualquier página
 mixin UserDrawerMixin<T extends StatefulWidget>
@@ -221,11 +222,14 @@ mixin UserDrawerMixin<T extends StatefulWidget>
                 children: [
                   _buildDrawerItem(context, Icons.home_rounded, "Inicio", () {
                     closeDrawer();
-                    Navigator.pushAndRemoveUntil(
-                      context,
-                      MaterialPageRoute(builder: (_) => const HomeScreen()),
-                      (route) => false,
-                    );
+                    // Si ya estamos en HomeScreen (lo sabemos si T es HomeScreen), no navegar
+                    if (widget is! HomeScreen) {
+                      Navigator.pushAndRemoveUntil(
+                        context,
+                        MaterialPageRoute(builder: (_) => const HomeScreen()),
+                        (route) => false,
+                      );
+                    }
                   }),
                   _buildDrawerItem(
                     context,
@@ -273,6 +277,45 @@ mixin UserDrawerMixin<T extends StatefulWidget>
                       color: HomeColors.divider(context),
                       height: 30,
                     ),
+                  ),
+                  // Switch de Modo Oscuro
+                  ValueListenableBuilder<ThemeMode>(
+                    valueListenable: ThemeProvider().themeMode,
+                    builder: (context, mode, child) {
+                      final isDark = mode == ThemeMode.dark;
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 4),
+                        child: ListTile(
+                          leading: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: HomeColors.primaryLight(
+                                context,
+                              ).withOpacity(0.5),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Icon(
+                              isDark ? Icons.dark_mode : Icons.light_mode,
+                              color: HomeColors.primary(context),
+                              size: 20,
+                            ),
+                          ),
+                          title: Text(
+                            "Modo Oscuro",
+                            style: TextStyle(
+                              color: HomeColors.textPrimary(context),
+                              fontSize: 15,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          trailing: Switch(
+                            value: isDark,
+                            onChanged: (val) => ThemeProvider().toggleTheme(),
+                            activeColor: HomeColors.primary(context),
+                          ),
+                        ),
+                      );
+                    },
                   ),
                   _buildDrawerItem(
                     context,

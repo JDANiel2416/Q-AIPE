@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
+from typing import List, Optional
 from app.db.session import get_db
 from app.schemas.api_schemas import SearchRequest, BodegaSearchResult, ProductItem, SmartSearchResponse
 from app.services.gemini_service import gemini_client
@@ -78,13 +79,114 @@ def normalize_capacity(text: str) -> str:
 
 # -------------------
 
-from app.models.tables import ChatSession, ChatMessage
+from app.models.tables import ChatSession, ChatMessage, User, Category, Bodega, MasterProduct, StoreInventory
 from sqlalchemy import desc, func
+from datetime import datetime, timedelta
+
+import re
+
+async def _parse_order_from_text(text: str, user_lat: float, user_lon: float, db: Session) -> List[BodegaSearchResult]:
+    # Regex para extraer items de la confirmación
+    # Formato esperado: "- 2 x Coca Cola (Bodega: Bodega Pepe) - S/ 10.00"
+    pattern = r'-\s*(\d+)\s*x\s*(.+?)\s*\(Bodega:\s*(.+?)\)\s*-\s*S/\s*([\d\.]+)'
+    
+    matches = re.findall(pattern, text)
+    if not matches:
+        return []
+    
+    bodega_items = {}
+    bodega_totals = {}
+    
+    for qty_str, prod_name, bod_name, total_str in matches:
+        qty = int(qty_str)
+        total_price = float(total_str)
+        unit_price = total_price / qty if qty > 0 else 0
+        
+        # Buscar bodega para este item
+        b_db = db.query(Bodega).filter(Bodega.name.ilike(f"%{bod_name}%")).first()
+        pid = 0
+        if b_db:
+            print(f"🏢 [PARSER] Bodega encontrada: {b_db.name} (ID: {b_db.id})")
+            # Buscar el producto maestro por nombre (más flexible)
+            clean_prod_name = prod_name.strip()
+            p_master = db.query(MasterProduct).filter(MasterProduct.name.ilike(clean_prod_name)).first()
+            if p_master:
+                print(f"📦 [PARSER] Producto maestro encontrado: {p_master.name} (ID: {p_master.id})")
+                # Verificar si está en el inventario de esa bodega
+                inv = db.query(StoreInventory).filter(
+                    StoreInventory.bodega_id == b_db.id,
+                    StoreInventory.product_id == p_master.id
+                ).first()
+                if inv:
+                    pid = p_master.id
+                    print(f"✅ [PARSER] Item en inventario confirmado. ID: {pid}")
+                else:
+                    print(f"❌ [PARSER] El producto {prod_name} no existe en el inventario de la bodega {bod_name}")
+            else:
+                print(f"❌ [PARSER] Producto maestro '{prod_name}' no encontrado en DB")
+        else:
+            print(f"❌ [PARSER] Bodega '{bod_name}' no encontrada en DB")
+        
+        if bod_name not in bodega_items:
+            bodega_items[bod_name] = []
+            bodega_totals[bod_name] = 0.0
+            
+        bodega_totals[bod_name] += total_price
+        
+        item = ProductItem(
+            product_id=pid,
+            name=prod_name,
+            price=unit_price,
+            stock=999,
+            unit="UND",
+            attributes={},
+            requested_quantity=qty
+        )
+        bodega_items[bod_name].append(item)
+        
+    results = []
+    for bod_name, items in bodega_items.items():
+        # Buscar bodega real por nombre
+        b_db = db.query(Bodega).filter(Bodega.name.ilike(f"%{bod_name}%")).first()
+        
+        if b_db:
+             res = BodegaSearchResult(
+                bodega_id=b_db.id,
+                name=b_db.name,
+                distance_meters=0, 
+                latitude=float(b_db.latitude),
+                longitude=float(b_db.longitude),
+                is_open=True, # Default to True for confirmation
+                completeness_score=1.0,
+                total_price=bodega_totals[bod_name],
+                found_items=items,
+                missing_items=[]
+             )
+             results.append(res)
+             
+    return results
 
 @router.post("/smart", response_model=SmartSearchResponse)
 async def search_smart(request: SearchRequest, db: Session = Depends(get_db)):
     
+
     print(f"\n📍 [DEBUG] Ubicación: {request.user_lat}, {request.user_lon}")
+    
+    # --- 0. DATOS DE CONTEXTO (USUARIO Y HORA) ---
+    user_name = "Usuario"
+    greeting_time = "Hola"
+    avoid_greeting = False
+    
+    # Hora Perú (UTC-5)
+    peru_time = datetime.utcnow() - timedelta(hours=5)
+    hour = peru_time.hour
+    
+    if 5 <= hour < 12:
+        greeting_time = "Buenos días"
+    elif 12 <= hour < 19:
+        greeting_time = "Buenas tardes"
+    else:
+        greeting_time = "Buenas noches"
 
     # --- 1. GESTIÓN DE MEMORIA (HISTORIAL EN BD) ---
     history_for_gemini = request.conversation_history # Fallback por defecto
@@ -95,6 +197,13 @@ async def search_smart(request: SearchRequest, db: Session = Depends(get_db)):
         
         # A. ESTRATEGIA DE SESIÓN (STRICT MODE)
         
+        # Recuperar Nombre del Usuario
+        user_record = db.query(User).filter(User.id == request.user_id).first()
+        if user_record and user_record.full_name:
+            # Solo primer nombre
+            user_name = user_record.full_name.strip().split()[0].title()
+            print(f"👤 [API] Nombre detectado: {user_name}")
+
         # 1. Prioridad Máxima: Session ID explícito desde Frontend
         if request.session_id:
             current_session = db.query(ChatSession).filter(ChatSession.id == request.session_id).first()
@@ -109,6 +218,18 @@ async def search_smart(request: SearchRequest, db: Session = Depends(get_db)):
                          ChatSession.id != current_session.id
                      ).update({"is_active": False})
                      db.commit()
+
+            # Check if conversation is active (Has the bot spoken before in this chat?)
+            if current_session:
+                 # Contamos mensajes previos del BOT en esta sesión
+                 msg_count = db.query(ChatMessage).filter(
+                     ChatMessage.session_id == current_session.id,
+                     ChatMessage.role == 'assistant'
+                 ).count()
+                 
+                 if msg_count > 0:
+                     avoid_greeting = True
+                     print(f"🚦 [CHAT] El bot ya ha participado en este chat ({msg_count} msgs). Omitiendo saludo.")
 
         # 2. Fallback: ELIMINADO. Si no hay ID explícito, queremos NUEVA sesión siempre.
         # if not current_session:
@@ -147,19 +268,58 @@ async def search_smart(request: SearchRequest, db: Session = Depends(get_db)):
     else:
         search_state = []
 
+    # --- 1.5 DETECCIÓN DE CONFIRMACIÓN DE PEDIDO (BYPASS GEMINI) ---
+    if "Quiero confirmar el siguiente pedido" in request.query:
+        print("🛒 [INTENT] Detectado 'Confirmación de Pedido' explícito.")
+        parsed_results = await _parse_order_from_text(request.query, request.user_lat, request.user_lon, db)
+        
+        bot_message = "¡Entendido! Aquí tienes el resumen de tu pedido listo para reservar."
+        
+        # Guardar respuesta del bot
+        if current_session:
+            # Serializamos attachment
+            import json
+            attachment_data = {
+                "type": "reservation_preview",
+                "results": [r.dict() for r in parsed_results] # Convertiral dict para JSON
+            }
+            # Bugfix: r.dict() might contain UUIDs not serializable. handled by json_encoders in main usually, but here we manually storing to JSONB.
+            # Convert UUID to str
+            def json_serial(obj):
+                if isinstance(obj, UUID): return str(obj)
+                raise TypeError(f"Type {type(obj)} not serializable")
+            
+            # Use json.loads/dumps to ensure dict format safely? 
+            # Actually SQLAlchemy JSONB handles basic types. But UUID needs string.
+            # We will rely on Pydantic's .json() or .dict() with proper encoders.
+            # For simplicity let's rely on standard serialization if possible or just store as dict if we can.
+            # But results has UUID objects.
+            # Let's rely on FastApi response_model to handle output, but for DB storage we need dicts.
+            
+            # Simple manual conversion for now
+            results_json = []
+            for res in parsed_results:
+                res_dict = res.dict()
+                res_dict['bodega_id'] = str(res_dict['bodega_id'])
+                # ProductItems don't have UUIDs usually
+                results_json.append(res_dict)
+
+            bot_msg_db = ChatMessage(
+                session_id=current_session.id, 
+                role="assistant", 
+                content=bot_message,
+                attachment_data={"type": "reservation_preview", "results": results_json}
+            )
+            db.add(bot_msg_db)
+            db.commit()
+
+        return SmartSearchResponse(
+            message=bot_message,
+            results=parsed_results,
+            session_id=current_session.id if current_session else None
+        )
+
     # --- 2. CLASIFICACIÓN DE INTENCIÓN ---
-    intent_data = await gemini_client.classify_intent(request.query)
-    intent_type = intent_data.get("intent", "UNKNOWN")
-    requires_search = intent_data.get("requires_search", True)
-    requires_state = intent_data.get("requires_state", False)
-    clear_state = intent_data.get("clear_state", False)
-    
-    is_inappropriate = intent_data.get("is_inappropriate", False)
-    
-    print(f"🎯 [INTENT] Tipo: {intent_type}, Buscar: {requires_search}, Estado: {requires_state}, Limpiar: {clear_state}, Inapropiado: {is_inappropriate}")
-    
-    # --- 3. MANEJO SEGÚN TIPO DE INTENCIÓN ---
-    
     # CASO 0: Contenido inapropiado - Rechazar sin llamar a Gemini (ahorra API)
     if intent_type == "INAPPROPRIATE" or is_inappropriate:
         # Mensaje fijo para no gastar API
@@ -179,7 +339,12 @@ async def search_smart(request: SearchRequest, db: Session = Depends(get_db)):
     
     # CASO A: Saludos y Despedidas - Solo responder, NO buscar productos
     if intent_type in ["GREETING", "FAREWELL"]:
-        bot_message = await gemini_client.generate_conversational_response(request.query, intent_type)
+        bot_message = await gemini_client.generate_conversational_response(
+            request.query, 
+            intent_type, 
+            user_name=user_name, 
+            greeting_time=greeting_time
+        )
         
         # Guardar respuesta del bot
         if current_session:
@@ -199,7 +364,12 @@ async def search_smart(request: SearchRequest, db: Session = Depends(get_db)):
             current_session.search_state = []
             db.commit()
         
-        bot_message = await gemini_client.generate_conversational_response(request.query, "CLEAR_CART")
+        bot_message = await gemini_client.generate_conversational_response(
+             request.query, 
+             "CLEAR_CART", 
+             user_name=user_name,
+             avoid_greeting=avoid_greeting
+        )
         
         if current_session:
             bot_msg_db = ChatMessage(session_id=current_session.id, role="assistant", content=bot_message)
@@ -220,7 +390,13 @@ async def search_smart(request: SearchRequest, db: Session = Depends(get_db)):
         else:
             context = "No hay pedido guardado"
         
-        bot_message = await gemini_client.generate_conversational_response(request.query, "RECALL_PREVIOUS", context)
+        bot_message = await gemini_client.generate_conversational_response(
+            request.query, 
+            "RECALL_PREVIOUS", 
+            context,
+            user_name=user_name,
+            avoid_greeting=avoid_greeting
+        )
         
         if current_session:
             bot_msg_db = ChatMessage(session_id=current_session.id, role="assistant", content=bot_message)
@@ -245,7 +421,13 @@ async def search_smart(request: SearchRequest, db: Session = Depends(get_db)):
             intent_items = search_state
             context = f"Confirmando pedido con {len(search_state)} productos"
         else:
-            bot_message = await gemini_client.generate_conversational_response(request.query, "CONFIRMATION", "No hay pedido pendiente")
+            bot_message = await gemini_client.generate_conversational_response(
+                request.query, 
+                "CONFIRMATION", 
+                "No hay pedido pendiente",
+                user_name=user_name,
+                avoid_greeting=avoid_greeting
+            )
             
             if current_session:
                 bot_msg_db = ChatMessage(session_id=current_session.id, role="assistant", content=bot_message)
@@ -286,7 +468,12 @@ async def search_smart(request: SearchRequest, db: Session = Depends(get_db)):
 
     if not keywords:
         # No hay productos que buscar - responder de forma conversacional
-        msg = await gemini_client.generate_shopkeeper_response(request.query, "Sin intención clara de producto.")
+        msg = await gemini_client.generate_shopkeeper_response(
+            request.query, 
+            "Sin intención clara de producto, intenta ayudar.",
+            user_name=user_name,
+            avoid_greeting=avoid_greeting
+        )
         
         if current_session:
             bot_msg_db = ChatMessage(session_id=current_session.id, role="assistant", content=msg)
@@ -297,7 +484,7 @@ async def search_smart(request: SearchRequest, db: Session = Depends(get_db)):
 
     # 2. Buscar en BD
     raw_results = InventoryRepository.search_products_smart(
-        db, keywords, request.user_lat, request.user_lon
+        db, keywords, request.user_lat, request.user_lon, max_dist_km=0.9
     )
 
     # 3. SISTEMA DE SCORING INTELIGENTE + ASIGNACIÓN DE CANTIDAD
@@ -513,10 +700,15 @@ async def search_smart(request: SearchRequest, db: Session = Depends(get_db)):
             context_str += f"Productos disponibles dispersos: {summary_products}. Avisa al usuario que tendría que pedir de dos sitios o elegir."
 
     else:
-        context_str = "No se encontraron coincidencias ni productos similares."
+        context_str = "No se encontraron coinciciencias en bodegas cercanas (radio máx 0.9km). Diles que no hay cobertura tan cerca o no tienen ese producto."
 
     
-    bot_message = await gemini_client.generate_shopkeeper_response(request.query, context_str)
+    bot_message = await gemini_client.generate_shopkeeper_response(
+        request.query, 
+        context_str,
+        user_name=user_name,
+        avoid_greeting=avoid_greeting
+    )
     
     # --- PROCESO DE GUARDADO DE RESPUESTA DEL BOT ---
     if current_session:
@@ -575,3 +767,120 @@ async def search_smart(request: SearchRequest, db: Session = Depends(get_db)):
         results=response_list,
         session_id=current_session.id if current_session else None
     )
+
+
+# --- NUEVO ENDPOINT PARA TIENDA VISUAL (MAPA) ---
+from pydantic import BaseModel
+from typing import List
+import math
+from app.models.tables import Bodega, MasterProduct, StoreInventory, User, Category  # Asegurar imports
+from sqlalchemy import or_
+
+class VisualStoreItem(BaseModel):
+    product_name: str
+    image_url: str | None
+    price: float
+    bodega_name: str
+    distance_meters: int
+    bodega_lat: float
+    bodega_lon: float
+    product_id: int
+    bodega_id: str
+
+@router.get("/visual-store", response_model=List[VisualStoreItem])
+async def get_visual_store_products(
+    category: str, 
+    lat: float, 
+    lon: float, 
+    radius_km: float = 0.9, 
+    db: Session = Depends(get_db)
+):
+    print(f"🌍 [VISUAL] Buscando '{category}' cerca de {lat},{lon} (Radio: {radius_km}km)")
+    
+    # Optimización: Bounding Box para filtro SQL rápido
+    # 1 grado lat ~= 111km
+    lat_range = radius_km / 111.0
+    # Ajuste por latitud para longitud
+    lon_range = radius_km / (111.0 * abs(math.cos(math.radians(lat)))) if abs(math.cos(math.radians(lat))) > 0.0001 else lat_range
+
+    min_lat = lat - lat_range
+    max_lat = lat + lat_range
+    min_lon = lon - lon_range
+    max_lon = lon + lon_range
+
+    query = (
+        db.query(
+            MasterProduct.name.label("product_name"),
+            MasterProduct.image_url,
+            StoreInventory.price,
+            Bodega.name.label("bodega_name"),
+            Bodega.latitude,
+            Bodega.longitude,
+            MasterProduct.id.label("product_id"),
+            Bodega.id.label("bodega_id")
+        )
+        .join(StoreInventory, MasterProduct.id == StoreInventory.product_id)
+        .join(Bodega, StoreInventory.bodega_id == Bodega.id)
+        .join(User, Bodega.owner_id == User.id) # Para verificar si el usuario/bodega está activo
+        .outerjoin(Category, MasterProduct.category_id == Category.id)
+        .filter(
+            or_(Category.name.ilike(f"%{category}%"), MasterProduct.category.ilike(f"%{category}%")),
+            StoreInventory.stock_quantity > 0,
+            User.is_active == True, # Requisito: bodega activa (usamos owner activo)
+            Bodega.latitude.between(min_lat, max_lat),
+            Bodega.longitude.between(min_lon, max_lon)
+        )
+    )
+    
+    results = query.all()
+    
+    final_items = []
+    
+    for row in results:
+        # Cálculo fino de distancia (Haversine real)
+        dist_km_real = InventoryRepository.haversine(lat, lon, float(row.latitude), float(row.longitude))
+        
+        if dist_km_real <= radius_km:
+            final_items.append(VisualStoreItem(
+                product_name=row.product_name,
+                image_url=row.image_url,
+                price=float(row.price),
+                bodega_name=row.bodega_name,
+                distance_meters=int(dist_km_real * 1000),
+                bodega_lat=float(row.latitude),
+                bodega_lon=float(row.longitude),
+                product_id=row.product_id,
+                bodega_id=str(row.bodega_id)
+            ))
+            
+    final_items.sort(key=lambda x: x.distance_meters)
+    
+    print(f"✅ [VISUAL] Encontrados {len(final_items)} items")
+    return final_items
+
+# --- CATEGORÍAS ---
+@router.get("/categories")
+def get_categories(db: Session = Depends(get_db)):
+    """Retorna todas las categorías disponibles para el slider."""
+    cats = db.query(Category).all()
+    results = []
+    
+    # Icon map fallback
+    icon_map = {
+        "Bebidas": "local_drink",
+        "Abarrotes": "shopping_basket",
+        "Limpieza": "cleaning_services",
+        "Cuidado Personal": "face",
+        "Snacks": "fastfood",
+        "Lácteos": "egg_alt",
+        "Otros": "category"
+    }
+
+    for c in cats:
+        icon_str = c.icon_name if c.icon_name else icon_map.get(c.name, "store")
+        results.append({
+            "name": c.name,
+            "icon_name": icon_str
+        })
+        
+    return results

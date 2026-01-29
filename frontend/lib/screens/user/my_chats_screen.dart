@@ -4,7 +4,8 @@ import 'package:intl/intl.dart';
 import '../../services/api_service.dart';
 import '../../services/session_service.dart';
 import 'shared_drawer.dart';
-import 'home_colors.dart'; // Importar helper de colores
+import 'home_screen.dart'; // Import HomeScreen
+import 'home_colors.dart'; // Import helper de colores
 
 class MyChatsScreen extends StatefulWidget {
   const MyChatsScreen({super.key});
@@ -118,10 +119,14 @@ class _MyChatsScreenState extends State<MyChatsScreen>
       // Si era el chat activo y se creó uno nuevo, retornar con el nuevo ID
       if (result['was_active'] == true && result['new_session_id'] != null) {
         if (mounted) {
-          Navigator.pop(context, {
-            'action': 'deleted_current',
-            'new_session_id': result['new_session_id'],
-          });
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(
+              builder: (_) =>
+                  HomeScreen(initialSessionId: result['new_session_id']),
+            ),
+            (route) => false,
+          );
         }
       } else {
         // Mostrar snackbar de éxito
@@ -156,12 +161,16 @@ class _MyChatsScreenState extends State<MyChatsScreen>
 
     if (isCurrent) {
       // Ya es el chat actual, solo regresar
-      Navigator.pop(context, {
-        'action': 'selected',
-        'session_id': chat['id'],
-        'title': chat['title'],
-        'is_current': true,
-      });
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(
+          builder: (_) => HomeScreen(
+            initialSessionId: chat['id'],
+            initialTitle: chat['title'],
+          ),
+        ),
+        (route) => false,
+      );
       return;
     }
 
@@ -172,12 +181,16 @@ class _MyChatsScreenState extends State<MyChatsScreen>
 
     if (result.isNotEmpty) {
       if (mounted) {
-        Navigator.pop(context, {
-          'action': 'selected',
-          'session_id': chat['id'],
-          'title': result['title'] ?? chat['title'],
-          'is_current': false, // Indica que cambió
-        });
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(
+            builder: (_) => HomeScreen(
+              initialSessionId: chat['id'],
+              initialTitle: result['title'] ?? chat['title'],
+            ),
+          ),
+          (route) => false,
+        );
       }
     } else {
       setState(() => _isLoading = false);
@@ -202,10 +215,13 @@ class _MyChatsScreenState extends State<MyChatsScreen>
 
     if (result.isNotEmpty && result['session_id'] != null) {
       if (mounted) {
-        Navigator.pop(context, {
-          'action': 'new',
-          'session_id': result['session_id'],
-        });
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(
+            builder: (_) => HomeScreen(initialSessionId: result['session_id']),
+          ),
+          (route) => false,
+        );
       }
     } else {
       setState(() => _isLoading = false);

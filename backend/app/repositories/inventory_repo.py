@@ -1,12 +1,12 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, cast, String, func
-from app.models.tables import StoreInventory, MasterProduct, Bodega
+from app.models.tables import StoreInventory, MasterProduct, Bodega, Category
 from math import radians, cos, sin, asin, sqrt
 
 class InventoryRepository:
 
     @staticmethod
-    def search_products_smart(db: Session, keywords: list[str], user_lat: float, user_lon: float, max_dist_km: float = 3.0): # <--- CAMBIO: Radio aumentado a 3.0 km
+    def search_products_smart(db: Session, keywords: list[str], user_lat: float, user_lon: float, max_dist_km: float = 3.0):
         """
         Busca productos por coincidencia en nombre, categoría, sinónimos O ATRIBUTOS.
         Filtra en un radio de 3.0 km por defecto.
@@ -25,6 +25,7 @@ class InventoryRepository:
         query = db.query(StoreInventory, MasterProduct, Bodega)\
             .join(MasterProduct, StoreInventory.product_id == MasterProduct.id)\
             .join(Bodega, StoreInventory.bodega_id == Bodega.id)\
+            .outerjoin(Category, MasterProduct.category_id == Category.id)\
             .filter(or_(
                 Bodega.manual_override == 'OPEN',
                 Bodega.manual_override.is_(None)
@@ -34,6 +35,8 @@ class InventoryRepository:
         for term in search_terms:
             pattern = f"%{term}%" 
             conditions.append(MasterProduct.name.ilike(pattern))
+            # Buscamos en la tabla de categorías (o fallback al string antiguo)
+            conditions.append(Category.name.ilike(pattern))
             conditions.append(MasterProduct.category.ilike(pattern))
             conditions.append(cast(MasterProduct.synonyms, String).ilike(pattern))
             # Búsqueda en JSON (importante para encontrar "gas", "litro")

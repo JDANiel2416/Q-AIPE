@@ -112,18 +112,49 @@ class ChatMessage(Base):
     session = relationship("ChatSession", back_populates="messages")
 
 
+# 3.5. CATEGORIAS (NUEVO)
+class Category(Base):
+    __tablename__ = "categories"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, nullable=False)
+    # Icono opcional para el frontend (ej: "local_drink_outlined")
+    icon_name = Column(String, nullable=True)
+    
+    # Relaciones
+    subcategories = relationship("SubCategory", back_populates="category", cascade="all, delete-orphan")
+
+class SubCategory(Base):
+    __tablename__ = "subcategories"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    category_id = Column(Integer, ForeignKey("categories.id"), nullable=False)
+    
+    # Relaciones
+    category = relationship("Category", back_populates="subcategories")
+
 # 4. PRODUCTOS MAESTROS (Catálogo Global)
 class MasterProduct(Base):
     __tablename__ = "master_products"
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
-    category = Column(String)
+    
+    # Mantenemos 'category' string por seguridad durante la migración, pero añadimos el FK
+    category = Column(String) 
+    category_id = Column(Integer, ForeignKey("categories.id"), nullable=True) # Nullable al inicio
+    subcategory_id = Column(Integer, ForeignKey("subcategories.id"), nullable=True) # NUEVO: FK Subcategoría
+    
     synonyms = Column(ARRAY(String)) # ["Gaseosa", "Refresco", "Soda"]
     image_url = Column(String)
     default_unit = Column(String) # "UND", "KG", "LT"
     # NUEVO CAMPO: Aquí se guardará {"marca": "Cielo", "gas": false}
     attributes = Column(JSONB, default={})
+
+    # Relaciones
+    category_obj = relationship("Category")
+    subcategory_obj = relationship("SubCategory")
 
 
 # 5. INVENTARIO

@@ -1,29 +1,33 @@
 import 'dart:convert';
 import 'dart:io';
-import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
 import '../models/search_models.dart';
 import '../models/inventory_models.dart';
 
 class ApiService {
   static String get baseUrl {
     //if (kIsWeb) return "http://127.0.0.1:8000/api/v1";
-    
+
     // OJO: Cambia los X por tu IP real, ejemplo: 192.168.1.15
-    //if (Platform.isAndroid) return "http://192.168.0.103:8000/api/v1"; 
-    
+    //if (Platform.isAndroid) return "http://192.168.0.103:8000/api/v1";
+
     //return "http://127.0.0.1:8000/api/v1";
-    const String publicUrl = "https://ayden-applicatory-untremblingly.ngrok-free.dev";
+    const String publicUrl =
+        "https://ayden-applicatory-untremblingly.ngrok-free.dev";
     return "$publicUrl/api/v1";
   }
 
   static String get host {
-    return baseUrl.replaceAll("/api/v1", ""); 
+    return baseUrl.replaceAll("/api/v1", "");
   }
 
-  Future<Map<String, dynamic>> addProduct(String userId, ProductCreateRequest product) async {
+  Future<Map<String, dynamic>> addProduct(
+    String userId,
+    ProductCreateRequest product,
+  ) async {
     final url = Uri.parse('$baseUrl/bodeguero/add-product?user_id=$userId');
-    
+
     try {
       final response = await http.post(
         url,
@@ -38,7 +42,10 @@ class ApiService {
       } else if (response.statusCode == 409) {
         return {"success": false, "status": 409, "message": data['detail']};
       } else {
-        return {"success": false, "message": data['detail'] ?? "Error desconocido"};
+        return {
+          "success": false,
+          "message": data['detail'] ?? "Error desconocido",
+        };
       }
     } catch (e) {
       print("Error de conexión: $e");
@@ -47,14 +54,14 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> updateProduct(
-    String userId, 
-    String productName, 
+    String userId,
+    String productName,
     String category,
-    double price, 
-    int stock
+    double price,
+    int stock,
   ) async {
     final url = Uri.parse('$baseUrl/bodeguero/update-product?user_id=$userId');
-    
+
     try {
       final response = await http.put(
         url,
@@ -70,13 +77,53 @@ class ApiService {
       final data = jsonDecode(utf8.decode(response.bodyBytes));
 
       if (response.statusCode == 200) {
-        return {"success": true, "message": data['message'] ?? "Producto actualizado"};
+        return {
+          "success": true,
+          "message": data['message'] ?? "Producto actualizado",
+        };
       } else {
-        return {"success": false, "message": data['detail'] ?? "Error al actualizar"};
+        return {
+          "success": false,
+          "message": data['detail'] ?? "Error al actualizar",
+        };
       }
     } catch (e) {
       print("Error de conexión: $e");
       return {"success": false, "message": "Error de conexión: $e"};
+    }
+  }
+
+  // NUEVO: Obtener categorías completas (Dynamic Frontend)
+  Future<List<CategoryModel>> getCategories() async {
+    final url = Uri.parse('$baseUrl/bodeguero/categories');
+    try {
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        List<dynamic> data = jsonDecode(utf8.decode(response.bodyBytes));
+        return data.map((e) => CategoryModel.fromJson(e)).toList();
+      }
+      return [];
+    } catch (e) {
+      print("Error fetching categories: $e");
+      return [];
+    }
+  }
+
+  // NUEVO: Obtener subcategorías
+  Future<List<SubCategoryModel>> getSubCategories(int categoryId) async {
+    final url = Uri.parse(
+      '$baseUrl/bodeguero/categories/$categoryId/subcategories',
+    );
+    try {
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        List<dynamic> data = jsonDecode(utf8.decode(response.bodyBytes));
+        return data.map((e) => SubCategoryModel.fromJson(e)).toList();
+      }
+      return [];
+    } catch (e) {
+      print("Error fetching subcategories: $e");
+      return [];
     }
   }
 
@@ -87,8 +134,10 @@ class ApiService {
     double price,
     int stockToAdd,
   ) async {
-    final url = Uri.parse('$baseUrl/bodeguero/update-product-by-id?user_id=$userId');
-    
+    final url = Uri.parse(
+      '$baseUrl/bodeguero/update-product-by-id?user_id=$userId',
+    );
+
     try {
       final response = await http.put(
         url,
@@ -103,9 +152,15 @@ class ApiService {
       final data = jsonDecode(utf8.decode(response.bodyBytes));
 
       if (response.statusCode == 200) {
-        return {"success": true, "message": data['message'] ?? "Producto actualizado"};
+        return {
+          "success": true,
+          "message": data['message'] ?? "Producto actualizado",
+        };
       } else {
-        return {"success": false, "message": data['detail'] ?? "Error al actualizar"};
+        return {
+          "success": false,
+          "message": data['detail'] ?? "Error al actualizar",
+        };
       }
     } catch (e) {
       print("Error de conexión: $e");
@@ -116,7 +171,7 @@ class ApiService {
   // Obtener perfil del bodeguero
   Future<Map<String, dynamic>> getProfile(String userId) async {
     final url = Uri.parse('$baseUrl/bodeguero/profile?user_id=$userId');
-    
+
     try {
       final response = await http.get(url);
       if (response.statusCode == 200) {
@@ -137,7 +192,7 @@ class ApiService {
     String bodegaName,
   ) async {
     final url = Uri.parse('$baseUrl/bodeguero/update-profile?user_id=$userId');
-    
+
     try {
       final response = await http.put(
         url,
@@ -152,9 +207,15 @@ class ApiService {
       final data = jsonDecode(utf8.decode(response.bodyBytes));
 
       if (response.statusCode == 200) {
-        return {"success": true, "message": data['message'] ?? "Perfil actualizado"};
+        return {
+          "success": true,
+          "message": data['message'] ?? "Perfil actualizado",
+        };
       } else {
-        return {"success": false, "message": data['detail'] ?? "Error al actualizar"};
+        return {
+          "success": false,
+          "message": data['detail'] ?? "Error al actualizar",
+        };
       }
     } catch (e) {
       print("Error updating profile: $e");
@@ -163,31 +224,34 @@ class ApiService {
   }
 
   // Subir foto de perfil
-  Future<Map<String, dynamic>> uploadProfilePhoto(String userId, File imageFile) async {
+  Future<Map<String, dynamic>> uploadProfilePhoto(
+    String userId,
+    File imageFile,
+  ) async {
     final url = Uri.parse('$baseUrl/bodeguero/upload-photo?user_id=$userId');
-    
+
     try {
       final request = http.MultipartRequest('POST', url);
       request.files.add(
-        await http.MultipartFile.fromPath(
-          'file',
-          imageFile.path,
-        ),
+        await http.MultipartFile.fromPath('file', imageFile.path),
       );
 
       final streamedResponse = await request.send();
       final response = await http.Response.fromStream(streamedResponse);
-      
+
       final data = jsonDecode(utf8.decode(response.bodyBytes));
 
       if (response.statusCode == 200) {
         return {
-          "success": true, 
+          "success": true,
           "message": data['message'] ?? "Foto actualizada",
-          "photo_url": data['photo_url']
+          "photo_url": data['photo_url'],
         };
       } else {
-        return {"success": false, "message": data['detail'] ?? "Error al subir foto"};
+        return {
+          "success": false,
+          "message": data['detail'] ?? "Error al subir foto",
+        };
       }
     } catch (e) {
       print("Error uploading photo: $e");
@@ -226,7 +290,10 @@ class ApiService {
   }
 
   // Actualizar estado de pedido
-  Future<Map<String, dynamic>> updateOrderStatus(String orderId, String status) async {
+  Future<Map<String, dynamic>> updateOrderStatus(
+    String orderId,
+    String status,
+  ) async {
     final url = Uri.parse('$baseUrl/bodeguero/orders/$orderId/status');
     try {
       final response = await http.put(
@@ -234,9 +301,9 @@ class ApiService {
         headers: {"Content-Type": "application/json"},
         body: jsonEncode({"status": status}),
       );
-      
+
       final data = jsonDecode(utf8.decode(response.bodyBytes));
-      
+
       if (response.statusCode == 200) {
         return {"success": true, "message": data['message']};
       }
@@ -246,22 +313,93 @@ class ApiService {
     }
   }
 
+  // NUEVO: Escaneo Mágico con IA
+  Future<Map<String, dynamic>> scanMagicProduct(File imageFile) async {
+    final url = Uri.parse('$baseUrl/bodeguero/scan-magic');
+
+    try {
+      final request = http.MultipartRequest('POST', url);
+      request.files.add(
+        await http.MultipartFile.fromPath(
+          'file',
+          imageFile.path,
+          contentType: MediaType('image', 'jpeg'),
+        ),
+      );
+
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+
+      final data = jsonDecode(utf8.decode(response.bodyBytes));
+
+      if (response.statusCode == 200) {
+        return {
+          "success": true,
+          "ai_data": data['ai_data'],
+          "found_master_id": data['found_master_id'],
+        };
+      } else {
+        return {
+          "success": false,
+          "message": data['detail'] ?? "Error al analizar imagen",
+        };
+      }
+    } catch (e) {
+      print("Error scanning product: $e");
+      return {"success": false, "message": "Error de conexión: $e"};
+    }
+  }
+
+  // NUEVO: Escaneo Masivo
+  Future<Map<String, dynamic>> scanBulkProducts(File imageFile) async {
+    final url = Uri.parse('$baseUrl/bodeguero/scan-bulk');
+
+    try {
+      final request = http.MultipartRequest('POST', url);
+      request.files.add(
+        await http.MultipartFile.fromPath(
+          'file',
+          imageFile.path,
+          contentType: MediaType('image', 'jpeg'),
+        ),
+      );
+
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+
+      final data = jsonDecode(utf8.decode(response.bodyBytes));
+
+      if (response.statusCode == 200) {
+        return data; // Retorna {"products":List}
+      } else {
+        return {
+          "error": true,
+          "message": data['detail'] ?? "Error desconocido",
+        };
+      }
+    } catch (e) {
+      return {"error": true, "message": "Error de conexión: $e"};
+    }
+  }
+
   // Ahora aceptamos latitud y longitud dinámicas
   Future<SmartSearchResponse> searchSmart(
-      String query, 
-      double userLat, 
-      double userLon, 
-      [String? userId, List<Map<String, String>> history = const [], String? sessionId] // <--- Added sessionId
-  ) async {
+    String query,
+    double userLat,
+    double userLon, [
+    String? userId,
+    List<Map<String, String>> history = const [],
+    String? sessionId, // <--- Added sessionId
+  ]) async {
     final url = Uri.parse('$baseUrl/search/smart');
-    
+
     final body = {
       "query": query,
       "user_lat": userLat,
       "user_lon": userLon,
       if (userId != null) "user_id": userId,
       if (sessionId != null) "session_id": sessionId, // <--- Send it
-      "conversation_history": history 
+      "conversation_history": history,
     };
 
     try {
@@ -286,7 +424,7 @@ class ApiService {
 
   // --- NUEVO: AUTH ---
 
-Future<Map<String, dynamic>> consultDni(String dni) async {
+  Future<Map<String, dynamic>> consultDni(String dni) async {
     final url = Uri.parse('$baseUrl/auth/consult_dni');
     try {
       print("🔵 Enviando DNI a: $url"); // <--- Debug
@@ -295,8 +433,10 @@ Future<Map<String, dynamic>> consultDni(String dni) async {
         headers: {"Content-Type": "application/json"},
         body: jsonEncode({"dni": dni}),
       );
-      
-      print("🟢 Respuesta Backend (${response.statusCode}): ${response.body}"); // <--- ¡AQUÍ VEREMOS EL JSON!
+
+      print(
+        "🟢 Respuesta Backend (${response.statusCode}): ${response.body}",
+      ); // <--- ¡AQUÍ VEREMOS EL JSON!
 
       if (response.statusCode == 200) {
         return jsonDecode(utf8.decode(response.bodyBytes));
@@ -310,12 +450,14 @@ Future<Map<String, dynamic>> consultDni(String dni) async {
   }
 
   Future<Map<String, dynamic>> registerUser(
-      String dni, 
-      String password, 
-      String phone, 
-      String role, 
-      {String? bodegaName, double? lat, double? lon} // Parámetros opcionales
-  ) async {
+    String dni,
+    String password,
+    String phone,
+    String role, {
+    String? bodegaName,
+    double? lat,
+    double? lon, // Parámetros opcionales
+  }) async {
     final url = Uri.parse('$baseUrl/auth/register');
     try {
       final body = {
@@ -335,21 +477,23 @@ Future<Map<String, dynamic>> consultDni(String dni) async {
       );
 
       final data = jsonDecode(utf8.decode(response.bodyBytes));
-      
+
       if (response.statusCode == 200) {
         return {
-            "success": true, 
-            "user_id": data["user_id"], 
-            "role": data["role"] // <--- ¡No dejes que se pierda!
+          "success": true,
+          "user_id": data["user_id"],
+          "role": data["role"], // <--- ¡No dejes que se pierda!
         };
       } else {
-        return {"success": false, "message": data["detail"] ?? "Error al registrar"};
+        return {
+          "success": false,
+          "message": data["detail"] ?? "Error al registrar",
+        };
       }
     } catch (e) {
       return {"success": false, "message": "Error: $e"};
     }
   }
-
 
   Future<dynamic> getMyInventory(String userId) async {
     final url = Uri.parse('$baseUrl/bodeguero/my-inventory?user_id=$userId');
@@ -371,10 +515,7 @@ Future<Map<String, dynamic>> consultDni(String dni) async {
       final response = await http.post(
         url,
         headers: {"Content-Type": "application/json"},
-        body: jsonEncode({
-          "product_id": productId,
-          "in_stock": inStock
-        }),
+        body: jsonEncode({"product_id": productId, "in_stock": inStock}),
       );
       return response.statusCode == 200;
     } catch (e) {
@@ -392,11 +533,14 @@ Future<Map<String, dynamic>> consultDni(String dni) async {
       );
 
       final data = jsonDecode(utf8.decode(response.bodyBytes));
-      
+
       if (response.statusCode == 200) {
         return data; // Retorna success: true, user_id, etc.
       } else {
-        return {"success": false, "message": data["detail"] ?? "Error de acceso"};
+        return {
+          "success": false,
+          "message": data["detail"] ?? "Error de acceso",
+        };
       }
     } catch (e) {
       return {"success": false, "message": "Error: $e"};
@@ -404,23 +548,23 @@ Future<Map<String, dynamic>> consultDni(String dni) async {
   }
 
   Future<Map<String, dynamic>> createReservation(
-    String userId, 
-    String bodegaId, 
-    List<dynamic> items
+    String userId,
+    String bodegaId,
+    List<dynamic> items,
   ) async {
     final url = Uri.parse('$baseUrl/reservations/create');
-    
+
     // Transformamos los items al formato que espera el backend
     final formattedItems = items.map((item) {
       // Si es un mapa (por si acaso), usamos [], si es objeto usamos .propiedad
       // Pero como en Dart no podemos usar [] en objetos que no lo soportan sin error,
       // asumimos que es ProductItem ya que eso envía el home_screen.
-      
+
       // Opcion segura: reflection o dynamic check, pero lo más simple es asumir objeto
       // dado que es lo que enviamos desde HomeScreen.
       return {
         "product_id": (item as dynamic).productId,
-        "product_name": (item as dynamic).name, 
+        "product_name": (item as dynamic).name,
         "quantity": (item as dynamic).requestedQuantity,
         "unit_price": (item as dynamic).price,
       };
@@ -433,7 +577,7 @@ Future<Map<String, dynamic>> consultDni(String dni) async {
         body: jsonEncode({
           "user_id": userId,
           "bodega_id": bodegaId,
-          "items": formattedItems
+          "items": formattedItems,
         }),
       );
 
@@ -442,7 +586,10 @@ Future<Map<String, dynamic>> consultDni(String dni) async {
       if (response.statusCode == 200) {
         return data;
       } else {
-        return {"success": false, "message": data["detail"] ?? "Error al reservar"};
+        return {
+          "success": false,
+          "message": data["detail"] ?? "Error al reservar",
+        };
       }
     } catch (e) {
       return {"success": false, "message": "Error de conexión: $e"};
@@ -451,8 +598,10 @@ Future<Map<String, dynamic>> consultDni(String dni) async {
 
   // Eliminar producto por ID
   Future<bool> deleteProduct(String userId, int productId) async {
-    final url = Uri.parse('$baseUrl/bodeguero/delete-product?user_id=$userId&product_id=$productId');
-    
+    final url = Uri.parse(
+      '$baseUrl/bodeguero/delete-product?user_id=$userId&product_id=$productId',
+    );
+
     try {
       final response = await http.delete(url);
       return response.statusCode == 200;
@@ -467,17 +616,17 @@ Future<Map<String, dynamic>> consultDni(String dni) async {
     // Reutilizamos el endpoint existente de FCM para guardar el ID de OneSignal
     // ya que la estructura en BD es la misma (un string en User.fcm_token)
     final url = Uri.parse('$baseUrl/auth/register-fcm-token');
-    
+
     try {
       final response = await http.post(
         url,
         headers: {"Content-Type": "application/json"},
         body: jsonEncode({
           "user_id": userId,
-          "fcm_token": oneSignalId // Enviamos el OneSignal ID aquí
+          "fcm_token": oneSignalId, // Enviamos el OneSignal ID aquí
         }),
       );
-      
+
       if (response.statusCode == 200) {
         print("✅ OneSignal ID registered successfully: $oneSignalId");
         return true;
@@ -499,7 +648,7 @@ Future<Map<String, dynamic>> consultDni(String dni) async {
   // NUEVO: Obtener estadísticas del dashboard
   Future<Map<String, dynamic>> getDashboardStats(String userId) async {
     final url = Uri.parse('$baseUrl/bodeguero/dashboard-stats?user_id=$userId');
-    
+
     try {
       final response = await http.get(url);
       if (response.statusCode == 200) {
@@ -517,7 +666,7 @@ Future<Map<String, dynamic>> consultDni(String dni) async {
   /// Obtener perfil del usuario (nombre, email, etc.)
   Future<Map<String, dynamic>> getUserProfile(String userId) async {
     final url = Uri.parse('$baseUrl/client/profile?user_id=$userId');
-    
+
     try {
       final response = await http.get(url);
       if (response.statusCode == 200) {
@@ -533,7 +682,7 @@ Future<Map<String, dynamic>> consultDni(String dni) async {
   /// Obtener lista de chats del usuario
   Future<List<dynamic>> getUserChats(String userId) async {
     final url = Uri.parse('$baseUrl/client/chats?user_id=$userId');
-    
+
     try {
       final response = await http.get(url);
       if (response.statusCode == 200) {
@@ -549,7 +698,7 @@ Future<Map<String, dynamic>> consultDni(String dni) async {
   /// Crear nueva sesión de chat (para recargar)
   Future<Map<String, dynamic>> createNewChatSession(String userId) async {
     final url = Uri.parse('$baseUrl/client/chats/new?user_id=$userId');
-    
+
     try {
       final response = await http.post(url);
       if (response.statusCode == 200) {
@@ -563,9 +712,14 @@ Future<Map<String, dynamic>> consultDni(String dni) async {
   }
 
   /// Obtener mensajes de un chat específico
-  Future<Map<String, dynamic>> getChatMessages(String userId, String sessionId) async {
-    final url = Uri.parse('$baseUrl/client/chats/$sessionId/messages?user_id=$userId');
-    
+  Future<Map<String, dynamic>> getChatMessages(
+    String userId,
+    String sessionId,
+  ) async {
+    final url = Uri.parse(
+      '$baseUrl/client/chats/$sessionId/messages?user_id=$userId',
+    );
+
     try {
       final response = await http.get(url);
       if (response.statusCode == 200) {
@@ -581,7 +735,7 @@ Future<Map<String, dynamic>> consultDni(String dni) async {
   /// Obtener historial de pedidos pagados
   Future<List<dynamic>> getUserOrders(String userId) async {
     final url = Uri.parse('$baseUrl/client/orders?user_id=$userId');
-    
+
     try {
       final response = await http.get(url);
       if (response.statusCode == 200) {
@@ -595,9 +749,14 @@ Future<Map<String, dynamic>> consultDni(String dni) async {
   }
 
   /// Activar un chat específico (marcarlo como actual)
-  Future<Map<String, dynamic>> activateChatSession(String userId, String sessionId) async {
-    final url = Uri.parse('$baseUrl/client/chats/$sessionId/activate?user_id=$userId');
-    
+  Future<Map<String, dynamic>> activateChatSession(
+    String userId,
+    String sessionId,
+  ) async {
+    final url = Uri.parse(
+      '$baseUrl/client/chats/$sessionId/activate?user_id=$userId',
+    );
+
     try {
       final response = await http.put(url);
       if (response.statusCode == 200) {
@@ -611,9 +770,12 @@ Future<Map<String, dynamic>> consultDni(String dni) async {
   }
 
   /// Eliminar un chat específico
-  Future<Map<String, dynamic>> deleteChatSession(String userId, String sessionId) async {
+  Future<Map<String, dynamic>> deleteChatSession(
+    String userId,
+    String sessionId,
+  ) async {
     final url = Uri.parse('$baseUrl/client/chats/$sessionId?user_id=$userId');
-    
+
     try {
       final response = await http.delete(url);
       if (response.statusCode == 200) {
@@ -629,7 +791,7 @@ Future<Map<String, dynamic>> consultDni(String dni) async {
   /// Obtener el chat activo actual (o crear uno nuevo si no existe)
   Future<Map<String, dynamic>> getCurrentChatSession(String userId) async {
     final url = Uri.parse('$baseUrl/client/chats/current?user_id=$userId');
-    
+
     try {
       final response = await http.get(url);
       if (response.statusCode == 200) {
@@ -645,14 +807,12 @@ Future<Map<String, dynamic>> consultDni(String dni) async {
   /// Eliminar token FCM al cerrar sesión (evita notificaciones cruzadas)
   Future<bool> unregisterFcmToken(String userId) async {
     final url = Uri.parse('$baseUrl/auth/unregister-fcm-token');
-    
+
     try {
       final response = await http.post(
         url,
         headers: {"Content-Type": "application/json"},
-        body: jsonEncode({
-          "user_id": userId,
-        }),
+        body: jsonEncode({"user_id": userId}),
       );
       return response.statusCode == 200;
     } catch (e) {
@@ -664,14 +824,14 @@ Future<Map<String, dynamic>> consultDni(String dni) async {
   /// Validar si un número de teléfono ya está registrado
   Future<Map<String, dynamic>> validatePhone(String phone) async {
     final url = Uri.parse('$baseUrl/auth/validate-phone');
-    
+
     try {
       final response = await http.post(
         url,
         headers: {"Content-Type": "application/json"},
         body: jsonEncode({"phone": phone}),
       );
-      
+
       if (response.statusCode == 200) {
         return jsonDecode(utf8.decode(response.bodyBytes));
       } else {
@@ -686,7 +846,7 @@ Future<Map<String, dynamic>> consultDni(String dni) async {
   /// Obtener lista de deudores (clientes con fiado)
   Future<Map<String, dynamic>> getDebtors(String userId) async {
     final url = Uri.parse('$baseUrl/bodeguero/debtors?user_id=$userId');
-    
+
     try {
       final response = await http.get(url);
       if (response.statusCode == 200) {
@@ -700,9 +860,14 @@ Future<Map<String, dynamic>> consultDni(String dni) async {
   }
 
   /// Obtener detalle de pedidos fiados de un cliente específico
-  Future<Map<String, dynamic>> getDebtorOrders(String userId, String debtorId) async {
-    final url = Uri.parse('$baseUrl/bodeguero/debtors/$debtorId/orders?user_id=$userId');
-    
+  Future<Map<String, dynamic>> getDebtorOrders(
+    String userId,
+    String debtorId,
+  ) async {
+    final url = Uri.parse(
+      '$baseUrl/bodeguero/debtors/$debtorId/orders?user_id=$userId',
+    );
+
     try {
       final response = await http.get(url);
       if (response.statusCode == 200) {
@@ -715,4 +880,42 @@ Future<Map<String, dynamic>> consultDni(String dni) async {
     }
   }
 
+  // --- NUEVO: Tienda Visual ---
+  Future<List<Map<String, dynamic>>> getVisualStoreProducts({
+    required String category,
+    required double lat,
+    required double lon,
+    double radiusKm = 1.0,
+  }) async {
+    final url = Uri.parse(
+      '$baseUrl/search/visual-store?category=$category&lat=$lat&lon=$lon&radius_km=$radiusKm',
+    );
+    try {
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(utf8.decode(response.bodyBytes));
+        return data.cast<Map<String, dynamic>>();
+      }
+      return [];
+    } catch (e) {
+      print("Error fetching visual store products: $e");
+      return [];
+    }
+  }
+
+  // Nueva API para Categorías en Tienda
+  Future<List<Map<String, dynamic>>> getSearchCategories() async {
+    final url = Uri.parse('$baseUrl/search/categories');
+    try {
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(utf8.decode(response.bodyBytes));
+        return data.cast<Map<String, dynamic>>();
+      }
+      return [];
+    } catch (e) {
+      print("Error fetching search categories: $e");
+      return [];
+    }
+  }
 }
