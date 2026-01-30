@@ -1,7 +1,7 @@
 import '../../../models/search_models.dart';
 
 // --- ENUMS ---
-enum MessageType { user, botThinking, botResponse }
+enum MessageType { user, botThinking, botResponse, orderSummary }
 
 enum AppMode { chat, store }
 
@@ -10,12 +10,14 @@ class ChatMessage {
   final MessageType type;
   final String? text;
   final List<BodegaSearchResult>? results;
-  bool isAnimated; // Nuevo: Para controlar estado de animación
+  final String? audioPath; // Nuevo: Para mensajes de voz
+  bool isAnimated;
 
   ChatMessage({
     required this.type,
     this.text,
     this.results,
+    this.audioPath,
     this.isAnimated = false,
   });
 }

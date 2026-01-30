@@ -12,6 +12,7 @@ import 'profile_screen.dart';
 import 'orders_screen.dart';
 import 'order_detail_screen.dart';
 import 'debtors_screen.dart';
+import 'qr_scanner_screen.dart';
 import 'bodeguero_colors.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -26,12 +27,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
   bool _showNotifications = false;
   bool _isLoading = true;
   String _bodegaName = "Cargando...";
-  
+  String? _bodegaId;
+  bool _isBodegaOpen = true;
+
   // Estadísticas dinámicas
   double _earningsToday = 0.0;
   int _ordersToday = 0;
   int _pendingOrdersCount = 0;
-  
+
   // Custom Refresh Logic
   double _pullDistance = 0.0;
   bool _isRefreshing = false;
@@ -41,11 +44,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String? _bestSellingProduct;
   String? _leastSellingProduct;
   double _totalCredit = 0.0;
-  
+
   // Bottom Navigation con animación líquida
   int _currentNavIndex = 0;
   late final ValueNotifier<double> _pillPositionNotifier;
-  
+
   // Subscription para eventos de push
   StreamSubscription<Map<String, dynamic>>? _orderEventSubscription;
 
@@ -56,16 +59,32 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   // Nav items
   final List<Map<String, dynamic>> _navItems = [
-    {'icon': Icons.dashboard_rounded, 'iconOutlined': Icons.dashboard_outlined, 'label': 'Inicio'},
-    {'icon': Icons.inventory_2_rounded, 'iconOutlined': Icons.inventory_2_outlined, 'label': 'Productos'},
-    {'icon': Icons.receipt_long_rounded, 'iconOutlined': Icons.receipt_long_outlined, 'label': 'Pedidos'},
-    {'icon': Icons.person_rounded, 'iconOutlined': Icons.person_outlined, 'label': 'Perfil'},
+    {
+      'icon': Icons.dashboard_rounded,
+      'iconOutlined': Icons.dashboard_outlined,
+      'label': 'Inicio',
+    },
+    {
+      'icon': Icons.inventory_2_rounded,
+      'iconOutlined': Icons.inventory_2_outlined,
+      'label': 'Productos',
+    },
+    {
+      'icon': Icons.receipt_long_rounded,
+      'iconOutlined': Icons.receipt_long_outlined,
+      'label': 'Pedidos',
+    },
+    {
+      'icon': Icons.person_rounded,
+      'iconOutlined': Icons.person_outlined,
+      'label': 'Perfil',
+    },
   ];
 
   @override
   void initState() {
     super.initState();
-    
+
     // Configurar status bar para tema claro
     SystemChrome.setSystemUIOverlayStyle(
       const SystemUiOverlayStyle(
@@ -75,22 +94,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
         systemNavigationBarIconBrightness: Brightness.dark,
       ),
     );
-    
+
     _pillPositionNotifier = ValueNotifier<double>(0.0);
-    
+
     _loadDashboardData();
-    
+
     // Escuchar eventos de nuevos pedidos en tiempo real
-    _orderEventSubscription = PushNotificationService().onOrderEvent.listen((event) {
+    _orderEventSubscription = PushNotificationService().onOrderEvent.listen((
+      event,
+    ) {
       final eventType = event['type'];
-      
+
       if (eventType == 'NEW_ORDER') {
         if (mounted) {
           _loadDashboardData();
           _ordersKey.currentState?.refresh();
         }
       }
-      
+
       if (eventType == 'NAVIGATE_TO_ORDER') {
         final reservationId = event['reservation_id'];
         if (reservationId != null && mounted) {
@@ -98,7 +119,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         }
       }
     });
-    
+
     _checkPendingNavigation();
   }
 
@@ -110,7 +131,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _navigateToOrderDetail(pendingOrderId);
     }
   }
-  
+
   Future<void> _navigateToOrderDetail(String orderId) async {
     try {
       final orderData = await _api.getOrderById(orderId);
@@ -145,24 +166,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
           _api.getMyInventory(userId),
           _api.getDashboardStats(userId),
         ]);
-        
+
         final inventoryData = results[0];
         final statsData = results[1] as Map<String, dynamic>;
-        
+
         if (mounted) {
           setState(() {
             if (inventoryData is Map && inventoryData['bodega_name'] != null) {
               _bodegaName = inventoryData['bodega_name'];
+              _bodegaId = inventoryData['bodega_id'];
+              _isBodegaOpen = inventoryData['is_open'] ?? true;
             }
-            
+
             _earningsToday = (statsData['earnings_today'] ?? 0.0).toDouble();
             _ordersToday = statsData['orders_today'] ?? 0;
             _pendingOrdersCount = statsData['pending_orders_count'] ?? 0;
             _pendingOrders = List<Map<String, dynamic>>.from(
-              statsData['pending_orders'] ?? []
+              statsData['pending_orders'] ?? [],
             );
             _weeklySales = List<Map<String, dynamic>>.from(
-              statsData['weekly_sales'] ?? []
+              statsData['weekly_sales'] ?? [],
             );
             _bestSellingProduct = statsData['best_selling_product'];
             _leastSellingProduct = statsData['least_selling_product'];
@@ -181,14 +204,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   void _onNavItemTapped(int index) {
     if (index == _currentNavIndex) return;
-    
+
     // Animar la píldora hacia el nuevo índice
     _animatePillTo(index);
-    
+
     setState(() {
       _currentNavIndex = index;
     });
-    
+
     // Refrescar la pantalla correspondiente si es necesario
     if (index == 0) {
       _loadDashboardData();
@@ -199,18 +222,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
     const duration = Duration(milliseconds: 300);
     final startValue = _pillPositionNotifier.value;
     final endValue = index.toDouble();
-    
+
     // Crear animación manual
     int steps = 30;
     double stepDuration = duration.inMilliseconds / steps;
-    
+
     for (int i = 0; i <= steps; i++) {
       Future.delayed(Duration(milliseconds: (stepDuration * i).toInt()), () {
         if (mounted) {
           double t = i / steps;
           // Curva easeOutCubic
           t = 1 - (1 - t) * (1 - t) * (1 - t);
-          _pillPositionNotifier.value = startValue + (endValue - startValue) * t;
+          _pillPositionNotifier.value =
+              startValue + (endValue - startValue) * t;
         }
       });
     }
@@ -248,7 +272,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ],
             ),
           ),
-          
+
           // Floating Glass Bottom Navigation Bar
           Positioned(
             left: 16,
@@ -256,10 +280,50 @@ class _DashboardScreenState extends State<DashboardScreen> {
             bottom: MediaQuery.of(context).padding.bottom + 16,
             child: _buildFloatingNavBar(),
           ),
-          
+
+          // Floating Scanner Button (Only on Dashboard)
+          if (_currentNavIndex == 0)
+            Positioned(
+              bottom: MediaQuery.of(context).padding.bottom + 110,
+              right: 20,
+              child: FloatingActionButton.extended(
+                onPressed: () {
+                  if (_bodegaId != null) {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => QRScannerScreen(bodegaId: _bodegaId!),
+                      ),
+                    ).then((_) {
+                      _loadDashboardData();
+                      _ordersKey.currentState?.refresh();
+                    });
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text("Cargando información...")),
+                    );
+                  }
+                },
+                backgroundColor: BColors.primary(context),
+                icon: const Icon(
+                  Icons.qr_code_scanner_rounded,
+                  color: Colors.white,
+                  size: 28,
+                ),
+                label: const Text(
+                  "Escanear",
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+                elevation: 6,
+              ),
+            ),
+
           // Notifications Overlay
-          if (_showNotifications)
-            _buildNotificationsOverlay(),
+          if (_showNotifications) _buildNotificationsOverlay(),
         ],
       ),
     );
@@ -270,12 +334,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _isRefreshing = true;
       _pullDistance = 60.0; // Mantener indicador visible
     });
-    
+
     // Haptic feedback ligero
     HapticFeedback.lightImpact();
-    
+
     await _loadDashboardData();
-    
+
     if (mounted) {
       setState(() {
         _isRefreshing = false;
@@ -305,7 +369,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       setState(() {
                         // Apply resistance (damping)
                         _pullDistance -= notification.overscroll * 0.4;
-                        if (_pullDistance > 120) _pullDistance = 120; // Max drag
+                        if (_pullDistance > 120)
+                          _pullDistance = 120; // Max drag
                       });
                     }
                   } else if (notification is ScrollEndNotification) {
@@ -316,7 +381,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     }
                   } else if (notification is ScrollUpdateNotification) {
                     // Si el usuario hace scroll hacia abajo (contenido sube), resetear pull
-                    if (notification.scrollDelta != null && notification.scrollDelta! > 0 && _pullDistance > 0) {
+                    if (notification.scrollDelta != null &&
+                        notification.scrollDelta! > 0 &&
+                        _pullDistance > 0) {
                       setState(() => _pullDistance = 0.0);
                     }
                   }
@@ -324,7 +391,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 },
                 child: SingleChildScrollView(
                   // ClampingScrollPhysics evita que el contenido se mueva al overscrollear
-                  physics: const ClampingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
+                  physics: const ClampingScrollPhysics(
+                    parent: AlwaysScrollableScrollPhysics(),
+                  ),
                   padding: const EdgeInsets.fromLTRB(20, 20, 20, 120),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -340,17 +409,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                 ),
               ),
-              
+
               // Custom Loading Indicator (Static Position Layer)
               if (_pullDistance > 0 || _isRefreshing)
                 Positioned(
                   top: 20,
-                  left: 0, 
+                  left: 0,
                   right: 0,
                   child: Opacity(
-                    opacity: _isRefreshing ? 1.0 : (_pullDistance / 60).clamp(0.0, 1.0),
+                    opacity: _isRefreshing
+                        ? 1.0
+                        : (_pullDistance / 60).clamp(0.0, 1.0),
                     child: Transform.translate(
-                      offset: Offset(0, _isRefreshing ? 0 : (_pullDistance > 60 ? 10 : -10 + (_pullDistance/3))), // Animación de entrada
+                      offset: Offset(
+                        0,
+                        _isRefreshing
+                            ? 0
+                            : (_pullDistance > 60
+                                  ? 10
+                                  : -10 + (_pullDistance / 3)),
+                      ), // Animación de entrada
                       child: Center(
                         child: Container(
                           width: 40,
@@ -367,21 +445,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             ],
                           ),
                           child: _isRefreshing
-                            ? Padding(
-                                padding: EdgeInsets.all(10),
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2.5,
-                                  color: BColors.primary(context),
+                              ? Padding(
+                                  padding: EdgeInsets.all(10),
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2.5,
+                                    color: BColors.primary(context),
+                                  ),
+                                )
+                              : Transform.rotate(
+                                  angle:
+                                      (_pullDistance /
+                                      10), // Rotar mientras se jala
+                                  child: Icon(
+                                    Icons.refresh_rounded,
+                                    color: _pullDistance > 60
+                                        ? BColors.primary(context)
+                                        : BColors.textMuted(context),
+                                    size: 24,
+                                  ),
                                 ),
-                              )
-                            : Transform.rotate(
-                                angle: (_pullDistance / 10), // Rotar mientras se jala
-                                child: Icon(
-                                  Icons.refresh_rounded,
-                                  color: _pullDistance > 60 ? BColors.primary(context) : BColors.textMuted(context),
-                                  size: 24,
-                                ),
-                              ),
                         ),
                       ),
                     ),
@@ -404,10 +486,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           decoration: BoxDecoration(
             color: BColors.surface(context).withOpacity(0.85),
             borderRadius: BorderRadius.circular(28),
-            border: Border.all(
-              color: Colors.white.withOpacity(0.5),
-              width: 1,
-            ),
+            border: Border.all(color: Colors.white.withOpacity(0.5), width: 1),
             boxShadow: [
               BoxShadow(
                 color: BColors.shadowMedium(context),
@@ -420,7 +499,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             builder: (context, constraints) {
               final double totalWidth = constraints.maxWidth;
               final double itemWidth = totalWidth / _navItems.length;
-              
+
               return Stack(
                 children: [
                   // Indicador deslizante "Liquid" animado
@@ -428,7 +507,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     valueListenable: _pillPositionNotifier,
                     builder: (context, position, child) {
                       final leftOffset = position * itemWidth + 8;
-                      
+
                       return AnimatedPositioned(
                         duration: const Duration(milliseconds: 50),
                         left: leftOffset,
@@ -438,14 +517,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         child: Container(
                           decoration: BoxDecoration(
                             gradient: LinearGradient(
-                              colors: [BColors.primary(context), BColors.primaryDark(context)],
+                              colors: [
+                                BColors.primary(context),
+                                BColors.primaryDark(context),
+                              ],
                               begin: Alignment.topLeft,
                               end: Alignment.bottomRight,
                             ),
                             borderRadius: BorderRadius.circular(20),
                             boxShadow: [
                               BoxShadow(
-                                color: BColors.primary(context).withOpacity(0.4),
+                                color: BColors.primary(
+                                  context,
+                                ).withOpacity(0.4),
                                 blurRadius: 12,
                                 offset: const Offset(0, 4),
                               ),
@@ -455,14 +539,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       );
                     },
                   ),
-                  
+
                   // Items de navegación
                   Row(
                     children: _navItems.asMap().entries.map((entry) {
                       final index = entry.key;
                       final item = entry.value;
                       final hasBadge = index == 2 && _pendingOrdersCount > 0;
-                      
+
                       return Expanded(
                         child: GestureDetector(
                           onTap: () => _onNavItemTapped(index),
@@ -471,7 +555,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             valueListenable: _pillPositionNotifier,
                             builder: (context, position, child) {
                               final isActive = position.round() == index;
-                              final color = isActive ? Colors.white : BColors.textMuted(context);
+                              final color = isActive
+                                  ? Colors.white
+                                  : BColors.textMuted(context);
 
                               return Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
@@ -480,7 +566,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                     clipBehavior: Clip.none,
                                     children: [
                                       Icon(
-                                        isActive ? item['icon'] : item['iconOutlined'],
+                                        isActive
+                                            ? item['icon']
+                                            : item['iconOutlined'],
                                         size: 26,
                                         color: color,
                                       ),
@@ -491,7 +579,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                           child: Container(
                                             padding: const EdgeInsets.all(4),
                                             decoration: BoxDecoration(
-                                              color: isActive ? Colors.white : BColors.error,
+                                              color: isActive
+                                                  ? Colors.white
+                                                  : BColors.error,
                                               shape: BoxShape.circle,
                                             ),
                                             constraints: const BoxConstraints(
@@ -499,9 +589,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                               minHeight: 18,
                                             ),
                                             child: Text(
-                                              _pendingOrdersCount > 9 ? '9+' : '$_pendingOrdersCount',
+                                              _pendingOrdersCount > 9
+                                                  ? '9+'
+                                                  : '$_pendingOrdersCount',
                                               style: TextStyle(
-                                                color: isActive ? BColors.primary(context) : Colors.white,
+                                                color: isActive
+                                                    ? BColors.primary(context)
+                                                    : Colors.white,
                                                 fontSize: 10,
                                                 fontWeight: FontWeight.bold,
                                               ),
@@ -516,7 +610,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                     item['label'],
                                     style: TextStyle(
                                       fontSize: 11,
-                                      fontWeight: isActive ? FontWeight.bold : FontWeight.w500,
+                                      fontWeight: isActive
+                                          ? FontWeight.bold
+                                          : FontWeight.w500,
                                       color: color,
                                     ),
                                     maxLines: 1,
@@ -549,7 +645,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             decoration: BoxDecoration(
               gradient: LinearGradient(
-                colors: [BColors.primary(context), BColors.primaryDark(context)],
+                colors: [
+                  BColors.primary(context),
+                  BColors.primaryDark(context),
+                ],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
@@ -578,9 +677,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ],
             ),
           ),
-          
+
           const Spacer(),
-          
+
           GestureDetector(
             onTap: () {
               setState(() {
@@ -646,6 +745,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
+  Future<void> _toggleBodegaStatus(bool value) async {
+    // Optimistic Update
+    setState(() => _isBodegaOpen = value);
+
+    try {
+      final userId = await SessionService().getUserId();
+      if (userId != null) {
+        await _api.updateBodegaStatus(userId, value);
+      }
+    } catch (e) {
+      // Revert if failed
+      if (mounted) setState(() => _isBodegaOpen = !value);
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error al cambiar de estado')));
+      }
+    }
+  }
+
   Widget _buildHeader() {
     final hour = DateTime.now().hour;
     String greeting;
@@ -657,23 +776,71 @@ class _DashboardScreenState extends State<DashboardScreen> {
       greeting = "Buenas noches";
     }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      crossAxisAlignment: CrossAxisAlignment.end,
       children: [
-        Text(
-          "$greeting 👋",
-          style: TextStyle(
-            color: BColors.textSecondary(context),
-            fontSize: 16,
-          ),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              "$greeting 👋",
+              style: TextStyle(
+                color: BColors.textSecondary(context),
+                fontSize: 16,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              "Panel de Control",
+              style: TextStyle(
+                color: BColors.textPrimary(context),
+                fontSize: 28,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
         ),
-        const SizedBox(height: 4),
-        Text(
-          "Panel de Control",
-          style: TextStyle(
-            color: BColors.textPrimary(context),
-            fontSize: 28,
-            fontWeight: FontWeight.bold,
+
+        // Switch de Estado
+        Container(
+          padding: const EdgeInsets.only(left: 12, right: 4, top: 2, bottom: 2),
+          decoration: BoxDecoration(
+            color: _isBodegaOpen
+                ? BColors.success.withOpacity(0.1)
+                : BColors.error.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(30),
+            border: Border.all(
+              color: _isBodegaOpen
+                  ? BColors.success.withOpacity(0.3)
+                  : BColors.error.withOpacity(0.3),
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                _isBodegaOpen ? "ABIERTO" : "CERRADO",
+                style: TextStyle(
+                  color: _isBodegaOpen ? BColors.success : BColors.error,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 10,
+                  letterSpacing: 0.5,
+                ),
+              ),
+              const SizedBox(width: 4),
+              Transform.scale(
+                scale: 0.7,
+                child: Switch(
+                  value: _isBodegaOpen,
+                  onChanged: _toggleBodegaStatus,
+                  activeColor: BColors.success,
+                  activeTrackColor: BColors.success.withOpacity(0.3),
+                  inactiveThumbColor: BColors.error,
+                  inactiveTrackColor: BColors.error.withOpacity(0.3),
+                ),
+              ),
+            ],
           ),
         ),
       ],
@@ -742,18 +909,32 @@ class _DashboardScreenState extends State<DashboardScreen> {
               color: BColors.warning,
               borderRadius: BorderRadius.circular(14),
             ),
-            child: Icon(Icons.account_balance_wallet_outlined, color: Colors.white, size: 26),
+            child: Icon(
+              Icons.account_balance_wallet_outlined,
+              color: Colors.white,
+              size: 26,
+            ),
           ),
           const SizedBox(width: 16),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text("Dinero Fiado", style: TextStyle(color: BColors.textSecondary(context), fontSize: 14)),
+                Text(
+                  "Dinero Fiado",
+                  style: TextStyle(
+                    color: BColors.textSecondary(context),
+                    fontSize: 14,
+                  ),
+                ),
                 const SizedBox(height: 4),
                 Text(
                   _isLoading ? "..." : "S/ ${_totalCredit.toStringAsFixed(2)}",
-                  style: TextStyle(color: BColors.textPrimary(context), fontSize: 24, fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                    color: BColors.textPrimary(context),
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ],
             ),
@@ -764,27 +945,54 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildAnalyticsCard(String title, String value, IconData icon, Color color) {
+  Widget _buildAnalyticsCard(
+    String title,
+    String value,
+    IconData icon,
+    Color color,
+  ) {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: BColors.surface(context),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: BColors.border(context)),
-        boxShadow: [BoxShadow(color: BColors.shadowMedium(context), blurRadius: 12, offset: const Offset(0, 4))],
+        boxShadow: [
+          BoxShadow(
+            color: BColors.shadowMedium(context),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
             padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(12),
+            ),
             child: Icon(icon, color: color, size: 24),
           ),
           const SizedBox(height: 16),
-          Text(title, style: TextStyle(color: BColors.textSecondary(context), fontSize: 13)),
+          Text(
+            title,
+            style: TextStyle(
+              color: BColors.textSecondary(context),
+              fontSize: 13,
+            ),
+          ),
           const SizedBox(height: 4),
-          Text(value, style: TextStyle(color: BColors.textPrimary(context), fontSize: 24, fontWeight: FontWeight.bold)),
+          Text(
+            value,
+            style: TextStyle(
+              color: BColors.textPrimary(context),
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
         ],
       ),
     );
@@ -793,19 +1001,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget _buildSalesChart() {
     final List<FlSpot> spots = [];
     double maxValue = 50.0;
-    
+
     for (int i = 0; i < _weeklySales.length && i < 7; i++) {
       final total = (_weeklySales[i]['total'] ?? 0.0).toDouble();
       spots.add(FlSpot(i.toDouble(), total));
       if (total > maxValue) maxValue = total;
     }
-    
+
     if (spots.isEmpty) {
       for (int i = 0; i < 7; i++) {
         spots.add(FlSpot(i.toDouble(), 0));
       }
     }
-    
+
     final maxY = (maxValue * 1.2).ceilToDouble();
     final interval = maxY > 0 ? (maxY / 4).ceilToDouble() : 10.0;
     final days = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
@@ -816,7 +1024,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
         color: BColors.surface(context),
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: BColors.border(context)),
-        boxShadow: [BoxShadow(color: BColors.shadowMedium(context), blurRadius: 16, offset: const Offset(0, 8))],
+        boxShadow: [
+          BoxShadow(
+            color: BColors.shadowMedium(context),
+            blurRadius: 16,
+            offset: const Offset(0, 8),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -824,11 +1038,31 @@ class _DashboardScreenState extends State<DashboardScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text("Ventas de la Semana", style: TextStyle(color: BColors.textPrimary(context), fontSize: 18, fontWeight: FontWeight.bold)),
+              Text(
+                "Ventas de la Semana",
+                style: TextStyle(
+                  color: BColors.textPrimary(context),
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(color: BColors.primaryLight(context), borderRadius: BorderRadius.circular(8)),
-                child: Text("Esta semana", style: TextStyle(color: BColors.primary(context), fontSize: 12, fontWeight: FontWeight.w600)),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: BColors.primaryLight(context),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  "Esta semana",
+                  style: TextStyle(
+                    color: BColors.primary(context),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ),
             ],
           ),
@@ -837,27 +1071,96 @@ class _DashboardScreenState extends State<DashboardScreen> {
             height: 200,
             child: LineChart(
               LineChartData(
-                gridData: FlGridData(show: true, drawVerticalLine: false, horizontalInterval: interval, getDrawingHorizontalLine: (value) => FlLine(color: BColors.divider(context), strokeWidth: 1)),
+                gridData: FlGridData(
+                  show: true,
+                  drawVerticalLine: false,
+                  horizontalInterval: interval,
+                  getDrawingHorizontalLine: (value) =>
+                      FlLine(color: BColors.divider(context), strokeWidth: 1),
+                ),
                 titlesData: FlTitlesData(
                   show: true,
-                  rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                  topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                  bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 30, interval: 1, getTitlesWidget: (value, meta) {
-                    final idx = value.toInt();
-                    if (idx >= 0 && idx < days.length) return Padding(padding: const EdgeInsets.only(top: 8), child: Text(days[idx], style: TextStyle(color: BColors.textMuted(context), fontSize: 12)));
-                    return Text('');
-                  })),
-                  leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, interval: interval, reservedSize: 50, getTitlesWidget: (value, meta) => Text('S/${value.toInt()}', style: TextStyle(color: BColors.textMuted(context), fontSize: 10)))),
+                  rightTitles: const AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
+                  topTitles: const AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
+                  bottomTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      reservedSize: 30,
+                      interval: 1,
+                      getTitlesWidget: (value, meta) {
+                        final idx = value.toInt();
+                        if (idx >= 0 && idx < days.length)
+                          return Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: Text(
+                              days[idx],
+                              style: TextStyle(
+                                color: BColors.textMuted(context),
+                                fontSize: 12,
+                              ),
+                            ),
+                          );
+                        return Text('');
+                      },
+                    ),
+                  ),
+                  leftTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      interval: interval,
+                      reservedSize: 50,
+                      getTitlesWidget: (value, meta) => Text(
+                        'S/${value.toInt()}',
+                        style: TextStyle(
+                          color: BColors.textMuted(context),
+                          fontSize: 10,
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
                 borderData: FlBorderData(show: false),
-                minX: 0, maxX: 6, minY: 0, maxY: maxY,
+                minX: 0,
+                maxX: 6,
+                minY: 0,
+                maxY: maxY,
                 lineBarsData: [
                   LineChartBarData(
-                    spots: spots, isCurved: true,
-                    gradient: LinearGradient(colors: [BColors.primary(context), BColors.primaryDark(context)]),
-                    barWidth: 3, isStrokeCapRound: true,
-                    dotData: FlDotData(show: true, getDotPainter: (spot, percent, barData, index) => FlDotCirclePainter(radius: 4, color: BColors.surface(context), strokeWidth: 2, strokeColor: BColors.primary(context))),
-                    belowBarData: BarAreaData(show: true, gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [BColors.primary(context).withOpacity(0.2), BColors.primary(context).withOpacity(0.0)])),
+                    spots: spots,
+                    isCurved: true,
+                    gradient: LinearGradient(
+                      colors: [
+                        BColors.primary(context),
+                        BColors.primaryDark(context),
+                      ],
+                    ),
+                    barWidth: 3,
+                    isStrokeCapRound: true,
+                    dotData: FlDotData(
+                      show: true,
+                      getDotPainter: (spot, percent, barData, index) =>
+                          FlDotCirclePainter(
+                            radius: 4,
+                            color: BColors.surface(context),
+                            strokeWidth: 2,
+                            strokeColor: BColors.primary(context),
+                          ),
+                    ),
+                    belowBarData: BarAreaData(
+                      show: true,
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          BColors.primary(context).withOpacity(0.2),
+                          BColors.primary(context).withOpacity(0.0),
+                        ],
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -866,9 +1169,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
           const SizedBox(height: 20),
           Row(
             children: [
-              if (_bestSellingProduct != null) Expanded(child: _buildProductTag("Más vendido", _bestSellingProduct!, BColors.success)),
-              if (_bestSellingProduct != null && _leastSellingProduct != null) const SizedBox(width: 12),
-              if (_leastSellingProduct != null) Expanded(child: _buildProductTag("Menos vendido", _leastSellingProduct!, BColors.warning)),
+              if (_bestSellingProduct != null)
+                Expanded(
+                  child: _buildProductTag(
+                    "Más vendido",
+                    _bestSellingProduct!,
+                    BColors.success,
+                  ),
+                ),
+              if (_bestSellingProduct != null && _leastSellingProduct != null)
+                const SizedBox(width: 12),
+              if (_leastSellingProduct != null)
+                Expanded(
+                  child: _buildProductTag(
+                    "Menos vendido",
+                    _leastSellingProduct!,
+                    BColors.warning,
+                  ),
+                ),
             ],
           ),
         ],
@@ -879,13 +1197,33 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget _buildProductTag(String label, String product, Color color) {
     return Container(
       padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(12), border: Border.all(color: color.withOpacity(0.2))),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.2)),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w600)),
+          Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
           const SizedBox(height: 4),
-          Text(product, style: TextStyle(color: BColors.textPrimary(context), fontSize: 13, fontWeight: FontWeight.w500), maxLines: 1, overflow: TextOverflow.ellipsis),
+          Text(
+            product,
+            style: TextStyle(
+              color: BColors.textPrimary(context),
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
         ],
       ),
     );
@@ -895,37 +1233,91 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text("Acciones Rápidas", style: TextStyle(color: BColors.textPrimary(context), fontSize: 18, fontWeight: FontWeight.bold)),
+        Text(
+          "Acciones Rápidas",
+          style: TextStyle(
+            color: BColors.textPrimary(context),
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+
         const SizedBox(height: 16),
         Row(
           children: [
-            Expanded(child: _buildActionCard("Gestionar Productos", "Ver inventario", Icons.inventory_2_outlined, BColors.primary(context), () => _onNavItemTapped(1))),
+            Expanded(
+              child: _buildActionCard(
+                "Gestionar Productos",
+                "Ver inventario",
+                Icons.inventory_2_outlined,
+                BColors.primary(context),
+                () => _onNavItemTapped(1),
+              ),
+            ),
             const SizedBox(width: 16),
-            Expanded(child: _buildActionCard("Ver Pedidos", "$_pendingOrdersCount activos", Icons.receipt_long_outlined, BColors.warning, () => _onNavItemTapped(2))),
+            Expanded(
+              child: _buildActionCard(
+                "Ver Pedidos",
+                "$_pendingOrdersCount activos",
+                Icons.receipt_long_outlined,
+                BColors.warning,
+                () => _onNavItemTapped(2),
+              ),
+            ),
           ],
         ),
       ],
     );
   }
 
-  Widget _buildActionCard(String title, String subtitle, IconData icon, Color color, VoidCallback onTap) {
+  Widget _buildActionCard(
+    String title,
+    String subtitle,
+    IconData icon,
+    Color color,
+    VoidCallback onTap,
+  ) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          gradient: LinearGradient(colors: [color.withOpacity(0.1), color.withOpacity(0.05)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+          gradient: LinearGradient(
+            colors: [color.withOpacity(0.1), color.withOpacity(0.05)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(color: color.withOpacity(0.2)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(12)), child: Icon(icon, color: Colors.white, size: 24)),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: color,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(icon, color: Colors.white, size: 24),
+            ),
             const SizedBox(height: 16),
-            Text(title, style: TextStyle(color: BColors.textPrimary(context), fontSize: 15, fontWeight: FontWeight.bold)),
+            Text(
+              title,
+              style: TextStyle(
+                color: BColors.textPrimary(context),
+                fontSize: 15,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
             const SizedBox(height: 4),
-            Text(subtitle, style: TextStyle(color: BColors.textSecondary(context), fontSize: 11)),
+            Text(
+              subtitle,
+              style: TextStyle(
+                color: BColors.textSecondary(context),
+                fontSize: 11,
+              ),
+            ),
           ],
         ),
       ),
@@ -941,12 +1333,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
           child: Stack(
             children: [
               Positioned(
-                top: 70, right: 20, width: 320,
+                top: 70,
+                right: 20,
+                width: 320,
                 child: GestureDetector(
                   onTap: () {},
                   child: Container(
                     padding: const EdgeInsets.symmetric(vertical: 16),
-                    decoration: BoxDecoration(color: BColors.surface(context), borderRadius: BorderRadius.circular(16), boxShadow: [BoxShadow(color: BColors.shadowMedium(context), blurRadius: 16, offset: const Offset(0, 4))]),
+                    decoration: BoxDecoration(
+                      color: BColors.surface(context),
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: BColors.shadowMedium(context),
+                          blurRadius: 16,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
@@ -956,12 +1360,32 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Text("Notificaciones", style: TextStyle(color: BColors.textPrimary(context), fontSize: 16, fontWeight: FontWeight.bold)),
+                              Text(
+                                "Notificaciones",
+                                style: TextStyle(
+                                  color: BColors.textPrimary(context),
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
                               if (_pendingOrdersCount > 0)
                                 Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                  decoration: BoxDecoration(color: BColors.primaryLight(context), borderRadius: BorderRadius.circular(10)),
-                                  child: Text("$_pendingOrdersCount nuevas", style: TextStyle(color: BColors.primary(context), fontSize: 10, fontWeight: FontWeight.bold)),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 2,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: BColors.primaryLight(context),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Text(
+                                    "$_pendingOrdersCount nuevas",
+                                    style: TextStyle(
+                                      color: BColors.primary(context),
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
                                 ),
                             ],
                           ),
@@ -969,27 +1393,100 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         const SizedBox(height: 12),
                         Divider(height: 1),
                         if (_pendingOrders.isEmpty)
-                          Padding(padding: EdgeInsets.all(30), child: Center(child: Text("No tienes notificaciones pendientes", style: TextStyle(color: BColors.textMuted(context), fontSize: 13), textAlign: TextAlign.center)))
+                          Padding(
+                            padding: EdgeInsets.all(30),
+                            child: Center(
+                              child: Text(
+                                "No tienes notificaciones pendientes",
+                                style: TextStyle(
+                                  color: BColors.textMuted(context),
+                                  fontSize: 13,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                            ),
+                          )
                         else
                           ConstrainedBox(
                             constraints: const BoxConstraints(maxHeight: 300),
                             child: ListView.separated(
-                              shrinkWrap: true, padding: EdgeInsets.zero,
+                              shrinkWrap: true,
+                              padding: EdgeInsets.zero,
                               itemCount: _pendingOrders.length,
                               separatorBuilder: (c, i) => Divider(height: 1),
                               itemBuilder: (context, index) {
                                 final order = _pendingOrders[index];
                                 return ListTile(
-                                  contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                                  leading: Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: BColors.primaryLight(context), shape: BoxShape.circle), child: Icon(Icons.shopping_bag, color: BColors.primary(context), size: 20)),
-                                  title: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text("Nuevo Pedido", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)), Text(order['time_ago'] ?? '', style: TextStyle(color: BColors.textMuted(context), fontSize: 10))]),
-                                  subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                    Padding(padding: const EdgeInsets.symmetric(vertical: 4), child: Text(order['items_summary'] ?? '', style: TextStyle(fontSize: 12), maxLines: 2, overflow: TextOverflow.ellipsis)),
-                                    Text("Total: S/ ${(order['total_amount'] ?? 0.0).toDouble().toStringAsFixed(2)}", style: TextStyle(color: BColors.primary(context), fontWeight: FontWeight.bold, fontSize: 12)),
-                                  ]),
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 20,
+                                    vertical: 8,
+                                  ),
+                                  leading: Container(
+                                    padding: const EdgeInsets.all(10),
+                                    decoration: BoxDecoration(
+                                      color: BColors.primaryLight(context),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Icon(
+                                      Icons.shopping_bag,
+                                      color: BColors.primary(context),
+                                      size: 20,
+                                    ),
+                                  ),
+                                  title: Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        "Nuevo Pedido",
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                      Text(
+                                        order['time_ago'] ?? '',
+                                        style: TextStyle(
+                                          color: BColors.textMuted(context),
+                                          fontSize: 10,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  subtitle: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          vertical: 4,
+                                        ),
+                                        child: Text(
+                                          order['items_summary'] ?? '',
+                                          style: TextStyle(fontSize: 12),
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                      Text(
+                                        "Total: S/ ${(order['total_amount'] ?? 0.0).toDouble().toStringAsFixed(2)}",
+                                        style: TextStyle(
+                                          color: BColors.primary(context),
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                   onTap: () {
                                     setState(() => _showNotifications = false);
-                                    Navigator.push(context, MaterialPageRoute(builder: (_) => OrderDetailScreen(order: order))).then((_) => _loadDashboardData());
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) =>
+                                            OrderDetailScreen(order: order),
+                                      ),
+                                    ).then((_) => _loadDashboardData());
                                   },
                                 );
                               },
@@ -999,8 +1496,29 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         Padding(
                           padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
                           child: GestureDetector(
-                            onTap: () { setState(() => _showNotifications = false); _onNavItemTapped(2); },
-                            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [Text("Ver todos los pedidos", style: TextStyle(color: BColors.primary(context), fontSize: 13, fontWeight: FontWeight.w600)), SizedBox(width: 4), Icon(Icons.arrow_forward_rounded, color: BColors.primary(context), size: 14)]),
+                            onTap: () {
+                              setState(() => _showNotifications = false);
+                              _onNavItemTapped(2);
+                            },
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(
+                                  "Ver todos los pedidos",
+                                  style: TextStyle(
+                                    color: BColors.primary(context),
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                SizedBox(width: 4),
+                                Icon(
+                                  Icons.arrow_forward_rounded,
+                                  color: BColors.primary(context),
+                                  size: 14,
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ],
@@ -1021,7 +1539,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 // =============================================================================
 class _EmbeddedProductsView extends StatefulWidget {
   final VoidCallback? onDataChanged;
-  
+
   const _EmbeddedProductsView({Key? key, this.onDataChanged}) : super(key: key);
 
   @override
@@ -1044,7 +1562,7 @@ class _EmbeddedProductsViewState extends State<_EmbeddedProductsView> {
 // =============================================================================
 class _EmbeddedOrdersView extends StatefulWidget {
   final VoidCallback? onDataChanged;
-  
+
   const _EmbeddedOrdersView({Key? key, this.onDataChanged}) : super(key: key);
 
   @override
@@ -1067,7 +1585,7 @@ class _EmbeddedOrdersViewState extends State<_EmbeddedOrdersView> {
 // =============================================================================
 class _EmbeddedProfileView extends StatefulWidget {
   final VoidCallback? onDataChanged;
-  
+
   const _EmbeddedProfileView({Key? key, this.onDataChanged}) : super(key: key);
 
   @override

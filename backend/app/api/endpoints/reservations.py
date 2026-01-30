@@ -150,3 +150,66 @@ async def create_reservation(request: CreateReservationRequest, db: Session = De
         db.rollback()
         print(f"Error creating reservation: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+class ReservationValidationRequest(BaseModel):
+    qr_data: str
+    bodega_id: str 
+
+@router.post("/validate")
+def validate_reservation(
+    request: ReservationValidationRequest, 
+    db: Session = Depends(get_db)
+):
+    # QR Format: RES|uuid|amount
+    try:
+        parts = request.qr_data.split('|')
+        if len(parts) < 2 or parts[0] != "RES":
+            raise HTTPException(status_code=400, detail="Código QR inválido o formato desconocido")
+            
+        reservation_id = parts[1]
+        
+        # Buscar reserva
+        reservation = db.query(Reservation).filter(Reservation.id == reservation_id).first()
+        
+        if not reservation:
+            raise HTTPException(status_code=404, detail="Reserva no encontrada en el sistema")
+            
+        # Validar bodega
+        if str(reservation.bodega_id) != request.bodega_id:
+            raise HTTPException(status_code=403, detail="Esta reserva pertenece a otra bodega")
+            
+        if reservation.status in ["PAID", "COMPLETED"]:
+             return {
+                "success": False, 
+                "already_validated": True,
+                "message": "El ticket ya fue validado anteriormente",
+                "reservation": {
+                    "id": str(reservation.id),
+                    "total": float(reservation.total_amount),
+                    "client": reservation.user.full_name if reservation.user else "Cliente",
+                    "status": reservation.status
+                }
+            }
+            
+        if reservation.status not in ["PENDING", "CREDIT"]:
+             raise HTTPException(status_code=400, detail=f"No se puede validar. Estado actual: {reservation.status}")
+
+        # NO ACTUALIZAMOS EL ESTADO AQUI. SOLO VALIDAMOS.
+        # El frontend debe llamar a /orders/{id}/status para confirmar el pago/fiado.
+
+        return {
+            "success": True, 
+            "message": "Ticket válido. Seleccione una acción.",
+            "reservation": {
+                "id": str(reservation.id),
+                "total": float(reservation.total_amount),
+                "client": reservation.user.full_name if reservation.user else "Cliente",
+                "status": reservation.status
+            }
+        }
+        
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        print(f"Error validating QR: {e}")
+        raise HTTPException(status_code=400, detail="Error al procesar el código QR")

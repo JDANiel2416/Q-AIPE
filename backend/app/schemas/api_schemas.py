@@ -12,6 +12,7 @@ class SearchRequest(BaseModel):
     user_id: Optional[UUID] = None # NUEVO: Para identificar al usuario y su historial
     session_id: Optional[UUID] = None # NUEVO: Para identificar el chat específico
     conversation_history: List[Dict[str, str]] = []
+    transcription: Optional[str] = None # NUEVO: Para devolverlo en la respuesta si viene de voz
 
 class BodegaStatusUpdate(BaseModel):
     manual_override: Optional[str] = None # 'OPEN', 'CLOSED' o None (null)
@@ -61,7 +62,9 @@ class BodegaSearchResult(BaseModel):
 class SmartSearchResponse(BaseModel):
     message: str
     results: List[BodegaSearchResult]
-    session_id: Optional[UUID] = None # NUEVO: Para que el frontend sepa el ID real
+    session_id: Optional[UUID] = None
+    is_order_summary: bool = False
+    transcription: Optional[str] = None # NUEVO
 
 class VoiceUpdateResponse(BaseModel):
     message: str

@@ -443,6 +443,46 @@ class ApiService {
     }
   }
 
+  Future<SmartSearchResponse> searchSmartVoice({
+    required File audioFile,
+    String? sessionId,
+    String? userId,
+    double? userLat,
+    double? userLon,
+  }) async {
+    try {
+      var uri = Uri.parse('$baseUrl/search/smart/voice');
+
+      Map<String, String> queryParams = {};
+      if (sessionId != null) queryParams['session_id'] = sessionId;
+      if (userId != null) queryParams['user_id'] = userId;
+      if (userLat != null) queryParams['user_lat'] = userLat.toString();
+      if (userLon != null) queryParams['user_lon'] = userLon.toString();
+
+      if (queryParams.isNotEmpty) {
+        uri = uri.replace(queryParameters: queryParams);
+      }
+
+      var request = http.MultipartRequest('POST', uri);
+      request.files.add(
+        await http.MultipartFile.fromPath('file', audioFile.path),
+      );
+
+      var streamedResponse = await request.send();
+      var response = await http.Response.fromStream(streamedResponse);
+
+      if (response.statusCode == 200) {
+        return SmartSearchResponse.fromJson(
+          json.decode(utf8.decode(response.bodyBytes)),
+        );
+      } else {
+        throw Exception('Failed to send voice: ${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('Error sending voice: $e');
+    }
+  }
+
   // --- NUEVO: AUTH ---
 
   Future<Map<String, dynamic>> consultDni(String dni) async {
@@ -537,6 +577,20 @@ class ApiService {
         url,
         headers: {"Content-Type": "application/json"},
         body: jsonEncode({"product_id": productId, "in_stock": inStock}),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  Future<bool> updateBodegaStatus(String userId, bool isOpen) async {
+    final url = Uri.parse('$baseUrl/bodeguero/status?user_id=$userId');
+    try {
+      final response = await http.put(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({"is_open": isOpen}),
       );
       return response.statusCode == 200;
     } catch (e) {
@@ -766,6 +820,36 @@ class ApiService {
     } catch (e) {
       print("Error fetching user orders: $e");
       return [];
+    }
+  }
+
+  // Validar reserva con QR
+  Future<Map<String, dynamic>> validateReservation(
+    String qrData,
+    String bodegaId,
+  ) async {
+    final url = Uri.parse('$baseUrl/reservations/validate');
+    try {
+      final response = await http.post(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({"qr_data": qrData, "bodega_id": bodegaId}),
+      );
+
+      // Manejar códigos de error 4xx como respuestas válidas (ej: "ya validado")
+      if (response.statusCode == 200 ||
+          response.statusCode == 400 ||
+          response.statusCode == 403 ||
+          response.statusCode == 404) {
+        return jsonDecode(utf8.decode(response.bodyBytes));
+      } else {
+        return {
+          "success": false,
+          "message": "Error del servidor (${response.statusCode})",
+        };
+      }
+    } catch (e) {
+      return {"success": false, "message": "Error de conexión: $e"};
     }
   }
 

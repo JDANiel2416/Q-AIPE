@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:flutter/cupertino.dart';
 import 'ticket_screen.dart';
@@ -386,7 +387,9 @@ class _HomeScreenState extends State<HomeScreen>
         _messages.removeLast();
         _messages.add(
           ChatMessage(
-            type: MessageType.botResponse,
+            type: response.isOrderSummary
+                ? MessageType.orderSummary
+                : MessageType.botResponse,
             text: response.message,
             results: response.results.isEmpty ? null : response.results,
           ),
@@ -642,8 +645,77 @@ class _HomeScreenState extends State<HomeScreen>
         isLoading: _isLoading,
         isTyping: _isTyping,
         onSubmitted: _handleSubmitted,
+        onVoiceRecorded: _handleVoiceRecorded,
       ),
     );
+  }
+
+  Future<void> _handleVoiceRecorded(String path) async {
+    setState(() {
+      _isLoading = true;
+      _isChatStarted = true;
+      _messages.add(
+        ChatMessage(
+          type: MessageType.user,
+          text: null,
+          audioPath: path,
+          results: null,
+        ),
+      );
+      _messages.add(
+        ChatMessage(
+          type: MessageType.botThinking,
+          text: "Procesando nota de voz...",
+        ),
+      );
+      print(
+        "DEBUG: Added user voice msg + thinking. Total messages: ${_messages.length}",
+      );
+    });
+
+    try {
+      final response = await _apiService.searchSmartVoice(
+        audioFile: File(path),
+        sessionId: _chatSessionId,
+        userId: _currentUserId,
+        userLat: _userLocation.latitude,
+        userLon: _userLocation.longitude,
+      );
+      print("DEBUG: searchSmartVoice response received: ${response.message}");
+
+      if (response.sessionId != null) {
+        _chatSessionId = response.sessionId;
+      }
+
+      setState(() {
+        _messages.removeLast(); // Remove thinking
+        _messages.add(
+          ChatMessage(
+            type: response.isOrderSummary
+                ? MessageType.orderSummary
+                : MessageType.botResponse,
+            text: response.message,
+            results: response.results.isEmpty ? null : response.results,
+          ),
+        );
+        _isLoading = false;
+        print("DEBUG: Added bot response. Total messages: ${_messages.length}");
+      });
+      _scrollToBottom();
+    } catch (e) {
+      print("DEBUG: Error in _handleVoiceRecorded: $e");
+      setState(() {
+        _isLoading = false;
+        _messages.removeLast(); // Remove thinking
+        _messages.add(
+          ChatMessage(
+            type: MessageType.botResponse,
+            text: "Error enviando audio. Intenta de nuevo.",
+          ),
+        );
+      });
+      _scrollToBottom();
+    }
   }
 
   Widget _buildMapOverlay() {
@@ -752,6 +824,28 @@ class _HomeScreenState extends State<HomeScreen>
                           ],
                         ),
                       ),
+                      Positioned(
+                        bottom: 0,
+                        left: 0,
+                        right: 0,
+                        child: AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 400),
+                          switchInCurve: Curves.easeOutBack,
+                          switchOutCurve: Curves.easeInBack,
+                          transitionBuilder: (child, animation) {
+                            return SlideTransition(
+                              position: Tween<Offset>(
+                                begin: const Offset(0, 1),
+                                end: Offset.zero,
+                              ).animate(animation),
+                              child: child,
+                            );
+                          },
+                          child: _selectedBodega != null
+                              ? _buildBodegaDetailsCard(_selectedBodega!)
+                              : const SizedBox.shrink(),
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -759,6 +853,123 @@ class _HomeScreenState extends State<HomeScreen>
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildBodegaDetailsCard(BodegaSearchResult bodega) {
+    final double rawScore = bodega.completenessScore;
+    final int percentage = rawScore <= 1.0
+        ? (rawScore * 100).toInt()
+        : rawScore.toInt();
+    final double progressValue = rawScore <= 1.0 ? rawScore : rawScore / 100.0;
+
+    Color scoreColor;
+    if (percentage < 30) {
+      scoreColor = HomeColors.error;
+    } else if (percentage < 70) {
+      scoreColor = Colors.orange;
+    } else {
+      scoreColor = HomeColors.success;
+    }
+
+    return Container(
+      key: ValueKey(bodega.bodegaId),
+      margin: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: HomeColors.surface(context),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.2),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Text(
+                  bodega.name,
+                  style: TextStyle(
+                    color: HomeColors.textPrimary(context),
+                    fontWeight: FontWeight.bold,
+                    fontSize: 18,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                "${bodega.distanceMeters} m",
+                style: TextStyle(
+                  color: HomeColors.textSecondary(context),
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Text(
+                "Disponibilidad:",
+                style: TextStyle(
+                  color: HomeColors.textSecondary(context),
+                  fontSize: 12,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                "$percentage%",
+                style: TextStyle(
+                  color: scoreColor,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: progressValue,
+              backgroundColor: HomeColors.surfaceVariant(context),
+              valueColor: AlwaysStoppedAnimation<Color>(scoreColor),
+              minHeight: 8,
+            ),
+          ),
+          const SizedBox(height: 16),
+          ElevatedButton(
+            onPressed: () => _processReservation(bodega),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: HomeColors.primary(context),
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              elevation: 0,
+            ),
+            child: const Text(
+              "Reservar Aquí",
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

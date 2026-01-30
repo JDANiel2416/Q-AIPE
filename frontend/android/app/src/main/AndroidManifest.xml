@@ -10,7 +10,7 @@
 
     <application
         android:label="Chek"
-        android:name="${applicationName}"
+        android:name=".MainApplication"
         android:icon="@mipmap/launcher_icon">
 
         <meta-data

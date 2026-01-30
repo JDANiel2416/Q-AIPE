@@ -1,6 +1,10 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, File, UploadFile
 from sqlalchemy.orm import Session
-from typing import List, Optional
+from typing import List, Optional, cast
+from uuid import UUID
+import uuid
+import shutil
+import os
 from app.db.session import get_db
 from app.schemas.api_schemas import SearchRequest, BodegaSearchResult, ProductItem, SmartSearchResponse
 from app.services.gemini_service import gemini_client
@@ -166,9 +170,161 @@ async def _parse_order_from_text(text: str, user_lat: float, user_lon: float, db
              
     return results
 
+# NUEVO: Helper para unificar respuesta de orden
+def _build_unified_order_response(search_state: List[dict], db: Session) -> dict:
+    if not search_state:
+        return {"message": "No hay productos en tu carrito temporal.", "results": []}
+    
+    grouped = {}
+    total_global = 0.0
+    
+    for item in search_state:
+        bodega_id = item.get('bodega_id')
+        if not bodega_id: continue 
+        
+        if bodega_id not in grouped:
+            bodega = db.query(Bodega).filter(Bodega.id == bodega_id).first()
+            grouped[bodega_id] = {
+                "bodega_name": bodega.name if bodega else "Bodega Desconocida",
+                "items": [],
+                "subtotal": 0.0
+            }
+            
+        qty = item.get('quantity', 1)
+        price = item.get('price', 0.0)
+        subtotal = price * qty
+        
+        grouped[bodega_id]['items'].append({
+            "name": item.get('name', 'Producto'),
+            "quantity": qty,
+            "unit_price": price,
+            "product_id": item.get('product_id')
+        })
+        grouped[bodega_id]['subtotal'] += subtotal
+        total_global += subtotal
+
+    results = []
+    for bid, data in grouped.items():
+        res = BodegaSearchResult(
+            bodega_id=bid,
+            name=data['bodega_name'],
+            latitude=0.0, longitude=0.0,
+            distance_meters=0, is_open=True, completeness_score=1.0,
+            total_price=data['subtotal'],
+            found_items=[
+                ProductItem(
+                     name=i['name'],
+                     price=i['unit_price'],
+                     requested_quantity=i['quantity'],
+                     stock=999, unit="UND", attributes={},
+                     product_id=i['product_id']
+                ) for i in data['items']
+            ],
+            missing_items=[]
+        )
+        results.append(res)
+        
+    return {
+        "message": f"Aquí tienes el resumen de tu pedido (Total: S/ {total_global:.2f}).",
+        "results": results
+    }
+
+@router.post("/smart/voice", response_model=SmartSearchResponse)
+async def smart_search_voice(
+    session_id: Optional[UUID] = None,
+    user_id: Optional[str] = None,
+    user_name: Optional[str] = "Usuario",
+    greeting_time: Optional[str] = "Hola",
+    user_lat: float = -8.0783, # Default Huanchaco
+    user_lon: float = -79.1180,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db)
+):
+    """
+    Procesa audio -> Texto (Gemini) -> Búsqueda Inteligente.
+    """
+    try:
+        # 1. Guardar audio temporal
+        temp_filename = f"temp_{uuid.uuid4()}.m4a"
+        with open(temp_filename, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+            
+        print(f"🎤 [VOICE] Audio recibido: {temp_filename}")
+
+        # 2. Transcribir
+        transcription = await gemini_client.transcribe_audio(temp_filename)
+        
+        # Limpiar
+        if os.path.exists(temp_filename):
+            os.remove(temp_filename)
+            
+        if not transcription:
+             return SmartSearchResponse(
+                message="No pude escucharte bien. ¿Podrías repetirlo?",
+                results=[],
+                session_id=session_id
+            )
+            
+        print(f"🎤 [VOICE] Texto detectado: {transcription}")
+        
+        # 3. Ejecutar búsqueda normal
+        # Construimos el request simulate
+        req = SearchRequest(
+            query=transcription,
+            session_id=session_id,
+            user_id=user_id,
+            user_name=user_name,
+            greeting_time=greeting_time,
+            user_lat=user_lat,
+            user_lon=user_lon,
+            transcription=transcription
+        )
+        
+        return await search_smart(req, db)
+
+    except Exception as e:
+        print(f"Error voice processing: {e}")
+        return SmartSearchResponse(
+            message="Error procesando tu audio.",
+            results=[],
+            session_id=session_id
+        )
+
 @router.post("/smart", response_model=SmartSearchResponse)
 async def search_smart(request: SearchRequest, db: Session = Depends(get_db)):
     
+    # 0. DETECCIÓN COMANDO ORDEN (Antes de todo)
+    if request.query and request.query.startswith("CMD_REVIEW_ORDER"):
+        print("🛒 [INTENT] Detectado CMD_REVIEW_ORDER")
+        try:
+             # Recuperar sesión
+             current_session = None
+             if request.session_id:
+                 current_session = db.query(ChatSession).filter(ChatSession.id == request.session_id).first()
+             
+             if not current_session and request.user_id:
+                 current_session = ChatSession(user_id=request.user_id, is_active=True)
+                 db.add(current_session)
+                 db.commit()
+            
+             if current_session:
+                 items = current_session.search_state or []
+                 unified = _build_unified_order_response(items, db)
+                 
+                 # Guardar respuesta
+                 bot_msg = ChatMessage(session_id=current_session.id, role="assistant", content=unified['message'])
+                 db.add(bot_msg)
+                 db.commit()
+                 
+                 return SmartSearchResponse(
+                     message=unified['message'],
+                     results=unified['results'],
+                     session_id=current_session.id,
+                     is_order_summary=True
+                 )
+        except Exception as e:
+             print(f"Error reviewing order: {e}")
+
 
     print(f"\n📍 [DEBUG] Ubicación: {request.user_lat}, {request.user_lon}")
     
@@ -316,7 +472,8 @@ async def search_smart(request: SearchRequest, db: Session = Depends(get_db)):
         return SmartSearchResponse(
             message=bot_message,
             results=parsed_results,
-            session_id=current_session.id if current_session else None
+            session_id=current_session.id if current_session else None,
+            is_order_summary=True
         )
 
     # --- 2. CLASIFICACIÓN DE INTENCIÓN ---
@@ -457,11 +614,20 @@ async def search_smart(request: SearchRequest, db: Session = Depends(get_db)):
         # Determinar si usamos el estado anterior
         state_to_use = search_state if requires_state else []
         
+        # 2. Interpretación (Extracción de JSON) con MasterProduct Context
+        known_products = []
+        try:
+            # Assuming MasterProduct is imported and db is a SQLAlchemy session
+            known_products = [r.name for r in db.query(MasterProduct.name).limit(1000).all()]
+        except Exception as e:
+            print(f"Error fetching known products: {e}")
+
         # Llamar a interpret_search_intent con el tipo de intención
         updated_state = await gemini_client.interpret_search_intent(
             request.query, 
             state_to_use, 
-            intent_type
+            intent_type=intent_type,
+            known_products=known_products
         )
         intent_items = updated_state
         
@@ -568,14 +734,77 @@ async def search_smart(request: SearchRequest, db: Session = Depends(get_db)):
             if has_forbidden:
                 continue
             
-            # ATRIBUTOS PREFERIDOS (+3)
+            # ATRIBUTOS PREFERIDOS (NUEVA LÓGICA ESTRICTA)
             preferred_list = intent.get("preferred_attributes", [])
+            
+            # Regla de extracción de unidades
+            import re
+            def extract_qty_unit(text):
+                # Matches: 3L, 3 L, 2.5kg, 250 g, 3 latas, 500ml
+                match = re.search(r'(\d+(?:\.\d+)?)\s*(l|ml|kg|gr?|oz|un|latas?|botellas?)', text, re.IGNORECASE)
+                if match:
+                    u = match.group(2).lower()
+                    # Normalizar unidades
+                    if u in ['gr', 'g', 'gramos']: u = 'g'
+                    if u in ['l', 'lt', 'litro', 'litros']: u = 'l'
+                    if u in ['ml', 'mililitros']: u = 'ml'
+                    if u in ['kg', 'kilo', 'kilos']: u = 'kg'
+                    return float(match.group(1)), u
+                return None, None
+
+            strict_penalty = False
+            attribute_boost = 0
+            
+            # Extraer specs del PRODUCTO
+            # Concatenamos atributos para buscar mejor
+            import json as _json_lib
+            prod_full_desc = f"{prod.name} {prod.default_unit or ''} {_json_lib.dumps(prod.attributes or {})}"
+            prod_qty, prod_unit = extract_qty_unit(prod_full_desc)
+            
             for pref in preferred_list:
-                pref_norm = normalize_text(pref)
-                pref_capacity = normalize_capacity(pref)
+                pref_qty, pref_unit = extract_qty_unit(pref)
                 
-                if pref_norm in full_product_text or pref_capacity in prod_capacity_norm:
-                    score += 3
+                if pref_qty is not None and pref_unit is not None:
+                    # EL USUARIO PIDIÓ CANTIDAD ESPECÍFICA (Ej: 3 L)
+                    
+                    if prod_qty is not None:
+                        # El producto TAMBIÉN tiene cantidad
+                        if pref_unit == prod_unit:
+                            if abs(pref_qty - prod_qty) < 0.1: 
+                                # COINCIDENCIA EXACTA (3L == 3L) -> BOOST MASIVO
+                                attribute_boost += 50
+                            else: 
+                                # MISMA UNIDAD, DIFERENTE CANTIDAD (3L vs 1.5L) -> PENALIZAR
+                                strict_penalty = True
+                        
+                        # Conversiones básicas (L vs ml / kg vs g)
+                        # 3 L vs 3000 ml
+                        elif (pref_unit == 'l' and prod_unit == 'ml'): 
+                             if abs(pref_qty * 1000 - prod_qty) < 1.0: attribute_boost += 50
+                             else: strict_penalty = True
+                        elif (pref_unit == 'ml' and prod_unit == 'l'): 
+                             if abs(pref_qty - prod_qty * 1000) < 1.0: attribute_boost += 50
+                             else: strict_penalty = True
+                        elif (pref_unit == 'kg' and prod_unit == 'g'): 
+                             if abs(pref_qty * 1000 - prod_qty) < 1.0: attribute_boost += 50
+                             else: strict_penalty = True
+                        elif (pref_unit == 'g' and prod_unit == 'kg'): 
+                             if abs(pref_qty - prod_qty * 1000) < 1.0: attribute_boost += 50
+                             else: strict_penalty = True
+                    
+                    else:
+                        # Usuario pide 3L, producto no dice nada claro. No penalizar, pero no boost.
+                        pass
+                
+                # Fallback de texto simple
+                pref_norm = normalize_text(pref)
+                if pref_norm in full_product_text and not strict_penalty:
+                     attribute_boost += 5
+            
+            if strict_penalty:
+                score -= 100 # Castigo severo para descartarlo o mandarlo al fondo
+            else:
+                score += attribute_boost
             
             # UMBRAL: Mínimo 8 puntos
             if score >= 8:

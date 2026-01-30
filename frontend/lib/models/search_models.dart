@@ -8,10 +8,10 @@ class ProductItem {
   final int requestedQuantity; // <--- NUEVO CAMPO
 
   ProductItem({
-    required this.productId, 
-    required this.name, 
-    required this.price, 
-    required this.stock, 
+    required this.productId,
+    required this.name,
+    required this.price,
+    required this.stock,
     required this.unit,
     required this.attributes,
     this.requestedQuantity = 1, // Default 1
@@ -24,11 +24,11 @@ class ProductItem {
       price: (json['price'] as num).toDouble(),
       stock: (json['stock'] as num).toDouble(),
       unit: json['unit'] ?? 'UND',
-      attributes: json['attributes'] != null 
-          ? Map<String, dynamic>.from(json['attributes']) 
+      attributes: json['attributes'] != null
+          ? Map<String, dynamic>.from(json['attributes'])
           : {},
       // Leemos el valor o usamos 1 si no viene
-      requestedQuantity: json['requested_quantity'] ?? 1, 
+      requestedQuantity: json['requested_quantity'] ?? 1,
     );
   }
 }
@@ -39,7 +39,7 @@ class BodegaSearchResult {
   final double completenessScore;
   final double totalPrice;
   final List<ProductItem> foundItems;
-  
+
   // --- CAMPOS NECESARIOS PARA EL MAPA ---
   final double latitude;
   final double longitude;
@@ -47,10 +47,10 @@ class BodegaSearchResult {
   final bool isOpen;
 
   BodegaSearchResult({
-    required this.bodegaId, 
-    required this.name, 
+    required this.bodegaId,
+    required this.name,
     required this.completenessScore,
-    required this.totalPrice, 
+    required this.totalPrice,
     required this.foundItems,
     required this.latitude,
     required this.longitude,
@@ -62,12 +62,15 @@ class BodegaSearchResult {
     return BodegaSearchResult(
       bodegaId: json['bodega_id'] ?? '',
       name: json['name'] ?? 'Bodega',
-      completenessScore: (json['completeness_score'] as num?)?.toDouble() ?? 0.0,
+      completenessScore:
+          (json['completeness_score'] as num?)?.toDouble() ?? 0.0,
       totalPrice: (json['total_price'] as num?)?.toDouble() ?? 0.0,
-      foundItems: (json['found_items'] as List?)
-          ?.map((i) => ProductItem.fromJson(i))
-          .toList() ?? [],
-          
+      foundItems:
+          (json['found_items'] as List?)
+              ?.map((i) => ProductItem.fromJson(i))
+              .toList() ??
+          [],
+
       // Lectura segura de coordenadas
       latitude: (json['latitude'] as num?)?.toDouble() ?? 0.0,
       longitude: (json['longitude'] as num?)?.toDouble() ?? 0.0,
@@ -80,17 +83,26 @@ class BodegaSearchResult {
 class SmartSearchResponse {
   final String message;
   final List<BodegaSearchResult> results;
-  final String? sessionId; // <--- NUEVO: ID de sesión
+  final String? sessionId;
+  final bool isOrderSummary;
 
-  SmartSearchResponse({required this.message, required this.results, this.sessionId});
+  SmartSearchResponse({
+    required this.message,
+    required this.results,
+    this.sessionId,
+    this.isOrderSummary = false,
+  });
 
   factory SmartSearchResponse.fromJson(Map<String, dynamic> json) {
     return SmartSearchResponse(
       message: json['message'] ?? "Resultados:",
-      results: (json['results'] as List?)
-          ?.map((i) => BodegaSearchResult.fromJson(i))
-          .toList() ?? [],
-      sessionId: json['session_id'], // <--- Lectura del backend
+      results:
+          (json['results'] as List?)
+              ?.map((i) => BodegaSearchResult.fromJson(i))
+              .toList() ??
+          [],
+      sessionId: json['session_id'],
+      isOrderSummary: json['is_order_summary'] ?? false,
     );
   }
 }

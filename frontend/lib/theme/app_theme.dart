@@ -5,11 +5,11 @@ import 'design_system.dart';
 /// Define ThemeData completo para Light y Dark mode
 class AppTheme {
   // ==================== LIGHT THEME ====================
-  
+
   static ThemeData lightTheme = ThemeData(
     useMaterial3: true,
     brightness: Brightness.light,
-    
+
     // Color Scheme
     colorScheme: ColorScheme.light(
       primary: AppDesign.primaryBlue,
@@ -25,10 +25,10 @@ class AppTheme {
       onError: Colors.white,
       outline: AppDesign.borderLight,
     ),
-    
+
     // Scaffold
     scaffoldBackgroundColor: AppDesign.backgroundLight,
-    
+
     // AppBar
     appBarTheme: AppBarTheme(
       backgroundColor: Colors.transparent,
@@ -43,7 +43,7 @@ class AppTheme {
         letterSpacing: -0.3,
       ),
     ),
-    
+
     // Card
     cardTheme: CardThemeData(
       elevation: 0,
@@ -54,7 +54,7 @@ class AppTheme {
         side: BorderSide(color: AppDesign.borderLight, width: 1),
       ),
     ),
-    
+
     // Elevated Button
     elevatedButtonTheme: ElevatedButtonThemeData(
       style: ElevatedButton.styleFrom(
@@ -76,7 +76,7 @@ class AppTheme {
         ),
       ),
     ),
-    
+
     // Outlined Button
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: OutlinedButton.styleFrom(
@@ -91,7 +91,7 @@ class AppTheme {
         ),
       ),
     ),
-    
+
     // Text Button
     textButtonTheme: TextButtonThemeData(
       style: TextButton.styleFrom(
@@ -102,7 +102,7 @@ class AppTheme {
         ),
       ),
     ),
-    
+
     // Input Decoration
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
@@ -131,20 +131,14 @@ class AppTheme {
         horizontal: AppDesign.spaceMD,
         vertical: AppDesign.spaceMD,
       ),
-      hintStyle: TextStyle(
-        color: AppDesign.textTertiaryLight,
-        fontSize: 14,
-      ),
-      labelStyle: TextStyle(
-        color: AppDesign.textSecondaryLight,
-        fontSize: 14,
-      ),
+      hintStyle: TextStyle(color: AppDesign.textTertiaryLight, fontSize: 14),
+      labelStyle: TextStyle(color: AppDesign.textSecondaryLight, fontSize: 14),
       floatingLabelStyle: const TextStyle(
         color: AppDesign.primaryBlue,
         fontSize: 14,
       ),
     ),
-    
+
     // Text Theme
     textTheme: const TextTheme(
       // Display - Para títulos muy grandes
@@ -154,7 +148,7 @@ class AppTheme {
         letterSpacing: -0.5,
         color: AppDesign.textPrimaryLight,
       ),
-      
+
       // Title - Títulos de sección
       titleLarge: TextStyle(
         fontSize: 24,
@@ -162,21 +156,21 @@ class AppTheme {
         letterSpacing: -0.3,
         color: AppDesign.textPrimaryLight,
       ),
-      
+
       // Heading - Subtítulos
       headlineMedium: TextStyle(
         fontSize: 20,
         fontWeight: FontWeight.w600,
         color: AppDesign.textPrimaryLight,
       ),
-      
+
       // Subheading
       titleMedium: TextStyle(
         fontSize: 16,
         fontWeight: FontWeight.w500,
         color: AppDesign.textPrimaryLight,
       ),
-      
+
       // Body - Texto normal
       bodyLarge: TextStyle(
         fontSize: 16,
@@ -190,14 +184,14 @@ class AppTheme {
         height: 1.5,
         color: AppDesign.textSecondaryLight,
       ),
-      
+
       // Caption - Texto pequeño
       bodySmall: TextStyle(
         fontSize: 12,
         fontWeight: FontWeight.normal,
         color: AppDesign.textTertiaryLight,
       ),
-      
+
       // Label - Para botones
       labelLarge: TextStyle(
         fontSize: 14,
@@ -206,7 +200,7 @@ class AppTheme {
         color: AppDesign.textPrimaryLight,
       ),
     ),
-    
+
     // Floating Action Button
     floatingActionButtonTheme: FloatingActionButtonThemeData(
       backgroundColor: AppDesign.primaryBlue,
@@ -216,14 +210,14 @@ class AppTheme {
         borderRadius: BorderRadius.circular(AppDesign.radiusLG),
       ),
     ),
-    
+
     // Divider
     dividerTheme: const DividerThemeData(
       color: AppDesign.borderLight,
       thickness: 1,
       space: 1,
     ),
-    
+
     // Bottom Sheet
     bottomSheetTheme: BottomSheetThemeData(
       backgroundColor: AppDesign.surfaceLight,
@@ -234,7 +228,7 @@ class AppTheme {
         ),
       ),
     ),
-    
+
     // Dialog
     dialogTheme: DialogThemeData(
       backgroundColor: AppDesign.surfaceLight,
@@ -244,16 +238,16 @@ class AppTheme {
       ),
     ),
   );
-  
+
   // ==================== DARK THEME ====================
-  
+
   static ThemeData darkTheme = ThemeData(
     useMaterial3: true,
     brightness: Brightness.dark,
-    
+
     // Color Scheme
     colorScheme: ColorScheme.dark(
-      primary: AppDesign.primaryBlueLight,
+      primary: AppDesign.primaryBlue,
       primaryContainer: AppDesign.primaryBlueDark,
       secondary: AppDesign.primaryBlue,
       secondaryContainer: AppDesign.primaryBlueDark,
@@ -266,10 +260,10 @@ class AppTheme {
       onError: Colors.white,
       outline: AppDesign.borderDark,
     ),
-    
+
     // Scaffold
     scaffoldBackgroundColor: AppDesign.backgroundDark,
-    
+
     // AppBar
     appBarTheme: AppBarTheme(
       backgroundColor: Colors.transparent,
@@ -284,7 +278,7 @@ class AppTheme {
         letterSpacing: -0.3,
       ),
     ),
-    
+
     // Card
     cardTheme: CardThemeData(
       elevation: 0,
@@ -295,7 +289,7 @@ class AppTheme {
         side: BorderSide(color: AppDesign.borderDark, width: 1),
       ),
     ),
-    
+
     // Elevated Button
     elevatedButtonTheme: ElevatedButtonThemeData(
       style: ElevatedButton.styleFrom(
@@ -317,7 +311,7 @@ class AppTheme {
         ),
       ),
     ),
-    
+
     // Outlined Button
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: OutlinedButton.styleFrom(
@@ -332,7 +326,7 @@ class AppTheme {
         ),
       ),
     ),
-    
+
     // Text Button
     textButtonTheme: TextButtonThemeData(
       style: TextButton.styleFrom(
@@ -343,7 +337,7 @@ class AppTheme {
         ),
       ),
     ),
-    
+
     // Input Decoration
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
@@ -358,7 +352,10 @@ class AppTheme {
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(AppDesign.radiusMD),
-        borderSide: const BorderSide(color: AppDesign.primaryBlueLight, width: 2),
+        borderSide: const BorderSide(
+          color: AppDesign.primaryBlueLight,
+          width: 2,
+        ),
       ),
       errorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(AppDesign.radiusMD),
@@ -372,20 +369,14 @@ class AppTheme {
         horizontal: AppDesign.spaceMD,
         vertical: AppDesign.spaceMD,
       ),
-      hintStyle: TextStyle(
-        color: AppDesign.textTertiaryDark,
-        fontSize: 14,
-      ),
-      labelStyle: TextStyle(
-        color: AppDesign.textSecondaryDark,
-        fontSize: 14,
-      ),
+      hintStyle: TextStyle(color: AppDesign.textTertiaryDark, fontSize: 14),
+      labelStyle: TextStyle(color: AppDesign.textSecondaryDark, fontSize: 14),
       floatingLabelStyle: const TextStyle(
         color: AppDesign.primaryBlueLight,
         fontSize: 14,
       ),
     ),
-    
+
     // Text Theme
     textTheme: const TextTheme(
       displayLarge: TextStyle(
@@ -434,7 +425,7 @@ class AppTheme {
         color: AppDesign.textPrimaryDark,
       ),
     ),
-    
+
     // Floating Action Button
     floatingActionButtonTheme: FloatingActionButtonThemeData(
       backgroundColor: AppDesign.primaryBlue,
@@ -444,14 +435,14 @@ class AppTheme {
         borderRadius: BorderRadius.circular(AppDesign.radiusLG),
       ),
     ),
-    
+
     // Divider
     dividerTheme: const DividerThemeData(
       color: AppDesign.borderDark,
       thickness: 1,
       space: 1,
     ),
-    
+
     // Bottom Sheet
     bottomSheetTheme: BottomSheetThemeData(
       backgroundColor: AppDesign.surfaceDark,
@@ -462,7 +453,7 @@ class AppTheme {
         ),
       ),
     ),
-    
+
     // Dialog
     dialogTheme: DialogThemeData(
       backgroundColor: AppDesign.surfaceDark,

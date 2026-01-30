@@ -34,6 +34,10 @@ class ProfileUpdateRequest(BaseModel):
     phone_number: str
     bodega_name: str
 
+# NUEVO: Esquema para estado
+class BodegaStatusUpdate(BaseModel):
+    is_open: bool
+
 
 router = APIRouter()
 
@@ -79,7 +83,9 @@ def get_my_inventory(user_id: str, db: Session = Depends(get_db)):
         })
     
     return {
+        "bodega_id": str(bodega.id),
         "bodega_name": bodega.name,
+        "is_open": bodega.manual_override == 'OPEN',
         "products": results
     }
 
@@ -382,6 +388,21 @@ def update_profile(
         "success": True,
         "message": "Perfil actualizado correctamente"
     }
+
+@router.put("/status")
+def update_bodega_status(
+    user_id: str,
+    status_data: BodegaStatusUpdate,
+    db: Session = Depends(get_db)
+):
+    bodega = db.query(Bodega).filter(Bodega.owner_id == user_id).first()
+    if not bodega:
+        raise HTTPException(status_code=404, detail="Bodega no encontrada")
+    
+    bodega.manual_override = 'OPEN' if status_data.is_open else 'CLOSED'
+    db.commit()
+    
+    return {"success": True, "is_open": status_data.is_open}
 
 from fastapi import UploadFile, File
 import shutil

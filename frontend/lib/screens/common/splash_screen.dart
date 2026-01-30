@@ -15,7 +15,8 @@ class SplashScreen extends StatefulWidget {
   State<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderStateMixin {
+class _SplashScreenState extends State<SplashScreen>
+    with SingleTickerProviderStateMixin {
   String _status = "Iniciando...";
   late AnimationController _controller;
   late Animation<double> _scaleAnimation;
@@ -24,13 +25,15 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   @override
   void initState() {
     super.initState();
-    
+
     // Configurar Status Bar Transparente
     SystemChrome.setSystemUIOverlayStyle(
       const SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
-        statusBarIconBrightness: Brightness.dark, // Se ajustará automáticamente en real
-        systemNavigationBarColor: Colors.transparent, // Transparente para edge-to-edge
+        statusBarIconBrightness:
+            Brightness.dark, // Se ajustará automáticamente en real
+        systemNavigationBarColor:
+            Colors.transparent, // Transparente para edge-to-edge
         systemNavigationBarIconBrightness: Brightness.dark,
       ),
     );
@@ -41,13 +44,15 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
       duration: const Duration(milliseconds: 1000),
     );
 
-    _scaleAnimation = Tween<double>(begin: 0.8, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeOutBack),
-    );
-    
-    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeIn),
-    );
+    _scaleAnimation = Tween<double>(
+      begin: 0.8,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutBack));
+
+    _fadeAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeIn));
 
     _controller.forward();
     _checkSession();
@@ -62,20 +67,20 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   void _checkSession() async {
     try {
       setState(() => _status = "Verificando sesión...");
-      
+
       // Delay estético para ver la animación
       await Future.delayed(const Duration(milliseconds: 1500));
-      
+
       String? userId;
       String? role;
-      
+
       try {
         final session = SessionService();
         userId = await session.getUserId().timeout(
           const Duration(seconds: 3),
           onTimeout: () => null,
         );
-        
+
         if (userId != null) {
           role = await session.getUserRole().timeout(
             const Duration(seconds: 2),
@@ -85,12 +90,12 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
       } catch (e) {
         print("⚠️ Error en SessionService: $e");
       }
-      
+
       if (!mounted) return;
-      
+
       setState(() => _status = "Redirigiendo...");
       await Future.delayed(const Duration(milliseconds: 300));
-      
+
       // Navegación con animación suave (Fade)
       Widget nextScreen;
       if (userId != null && userId.isNotEmpty) {
@@ -113,12 +118,14 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
           transitionDuration: const Duration(milliseconds: 600),
         ),
       );
-      
     } catch (e) {
       if (mounted) {
         setState(() => _status = "Error: $e");
         await Future.delayed(const Duration(seconds: 2));
-        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const LoginScreen()),
+        );
       }
     }
   }
@@ -126,9 +133,11 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     return Scaffold(
-      backgroundColor: isDark ? AppDesign.backgroundDark : AppDesign.backgroundLight,
+      backgroundColor: isDark
+          ? AppDesign.backgroundDark
+          : AppDesign.backgroundLight,
       body: Stack(
         children: [
           // Fondo decorativo sutil
@@ -140,7 +149,9 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
               height: 300,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: isDark ? AppDesign.primaryBlueDark.withOpacity(0.1) : AppDesign.primaryBlueUltraLight.withOpacity(0.5),
+                color: isDark
+                    ? AppDesign.primaryBlueDark.withOpacity(0.1)
+                    : AppDesign.primaryBlueUltraLight.withOpacity(0.5),
                 boxShadow: [
                   BoxShadow(
                     color: AppDesign.primaryBlue.withOpacity(0.1),
@@ -171,8 +182,12 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                             shape: BoxShape.circle,
                             gradient: LinearGradient(
                               colors: [
-                                isDark ? AppDesign.primaryBlueDark : AppDesign.primaryBlueUltraLight,
-                                isDark ? AppDesign.surfaceVariantDark : Colors.white,
+                                isDark
+                                    ? AppDesign.primaryBlueDark
+                                    : AppDesign.primaryBlueUltraLight,
+                                isDark
+                                    ? AppDesign.surfaceVariantDark
+                                    : Colors.white,
                               ],
                               begin: Alignment.topLeft,
                               end: Alignment.bottomRight,
@@ -192,14 +207,16 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                           ),
                         ),
                         const SizedBox(height: 24),
-                        
+
                         // TEXTO MARCA
                         Text(
                           "Chek",
                           style: TextStyle(
                             fontSize: 32,
                             fontWeight: FontWeight.bold,
-                            color: isDark ? AppDesign.textPrimaryDark : AppDesign.textPrimaryLight,
+                            color: isDark
+                                ? AppDesign.textPrimaryDark
+                                : AppDesign.textPrimaryLight,
                             letterSpacing: 1.5,
                           ),
                         ),
@@ -208,7 +225,9 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                           "Tu bodega favorita, al toque.",
                           style: TextStyle(
                             fontSize: 16,
-                            color: isDark ? AppDesign.textSecondaryDark : AppDesign.textSecondaryLight,
+                            color: isDark
+                                ? AppDesign.textSecondaryDark
+                                : AppDesign.textSecondaryLight,
                             fontWeight: FontWeight.w400,
                           ),
                         ),
@@ -224,13 +243,17 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                             color: AppDesign.primaryBlue,
                           ),
                         ),
-                        
+
                         const SizedBox(height: 16),
-                        
+
                         Text(
                           _status,
                           style: TextStyle(
-                            color: (isDark ? AppDesign.textSecondaryDark : AppDesign.textSecondaryLight).withOpacity(0.8),
+                            color:
+                                (isDark
+                                        ? AppDesign.textSecondaryDark
+                                        : AppDesign.textSecondaryLight)
+                                    .withOpacity(0.8),
                             fontSize: 13,
                             fontWeight: FontWeight.w500,
                           ),
@@ -242,22 +265,37 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
               },
             ),
           ),
-          
+
           // Versión o footer
           Positioned(
             bottom: 30,
             left: 0,
             right: 0,
-            child: Center(
-              child: Text(
-                "v1.0.0",
-                style: TextStyle(
-                  color: (isDark ? AppDesign.textSecondaryDark : AppDesign.textSecondaryLight).withOpacity(0.5),
-                  fontSize: 12,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Image.asset(
+                  isDark
+                      ? "assets/images/Background_Dark.png"
+                      : "assets/images/Background_Ligth.png",
+                  height: 60,
+                  fit: BoxFit.contain,
                 ),
-              ),
+                const SizedBox(height: 10),
+                Text(
+                  "v2.8.0",
+                  style: TextStyle(
+                    color:
+                        (isDark
+                                ? AppDesign.textSecondaryDark
+                                : AppDesign.textSecondaryLight)
+                            .withOpacity(0.5),
+                    fontSize: 12,
+                  ),
+                ),
+              ],
             ),
-          )
+          ),
         ],
       ),
     );

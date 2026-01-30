@@ -3,6 +3,8 @@ import '../home_colors.dart';
 import '../models/home_models.dart';
 import '../../../widgets/common/chat_widgets.dart';
 import 'bodega_card.dart';
+import 'unified_order_card.dart';
+import 'voice_message_bubble.dart';
 import '../../../models/search_models.dart';
 
 class HomeChatView extends StatelessWidget {
@@ -13,6 +15,7 @@ class HomeChatView extends StatelessWidget {
   final ScrollController scrollController;
   final Function(BodegaSearchResult) onViewMap;
   final Function(BodegaSearchResult) onReserve;
+  final VoidCallback? onConfirmOrder;
   final Function(ChatMessage) onCompleteTyping;
 
   const HomeChatView({
@@ -24,6 +27,7 @@ class HomeChatView extends StatelessWidget {
     required this.scrollController,
     required this.onViewMap,
     required this.onReserve,
+    this.onConfirmOrder,
     required this.onCompleteTyping,
   });
 
@@ -161,6 +165,12 @@ class HomeChatView extends StatelessWidget {
 
   Widget _contentForMessage(BuildContext context, ChatMessage msg) {
     if (msg.type == MessageType.user) {
+      if (msg.audioPath != null) {
+        return Align(
+          alignment: Alignment.centerRight,
+          child: VoiceMessageBubble(audioPath: msg.audioPath!, isUser: true),
+        );
+      }
       return Align(
         alignment: Alignment.centerRight,
         child: Container(
@@ -208,6 +218,12 @@ class HomeChatView extends StatelessWidget {
             ),
           ),
         ],
+      );
+    } else if (msg.type == MessageType.orderSummary) {
+      return UnifiedOrderCard(
+        results: msg.results ?? [],
+        onConfirmAll: onConfirmOrder ?? () {},
+        onChangeSelection: onViewMap,
       );
     } else {
       return Column(

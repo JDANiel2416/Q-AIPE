@@ -4,7 +4,8 @@ import 'package:intl/intl.dart';
 import '../../services/api_service.dart';
 import '../../services/session_service.dart';
 import 'shared_drawer.dart';
-import 'home_colors.dart'; // Importar helper de colores
+import 'home_colors.dart';
+import 'ticket_screen.dart';
 
 class OrdersHistoryScreen extends StatefulWidget {
   const OrdersHistoryScreen({super.key});
@@ -201,176 +202,228 @@ class _OrdersHistoryScreenState extends State<OrdersHistoryScreen>
     final items = order['items'] as List<dynamic>? ?? [];
     final status = order['status'] ?? 'PAID';
     final statusColor = _getStatusColor(status);
+    final isClickable = status == 'PENDING' || status == 'CREDIT';
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      decoration: BoxDecoration(
-        color: HomeColors.surface(context),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: HomeColors.border(context)),
-        boxShadow: [
-          BoxShadow(
-            color: HomeColors.shadowLight(context),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
+    return GestureDetector(
+      onTap: isClickable
+          ? () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => TicketScreen(
+                    ticketData: {
+                      'items': items,
+                      'total': order['total_amount'],
+                      'qr_data': order['qr_data'] ?? '',
+                      'formatted_name': "Mi Pedido",
+                    },
+                  ),
+                ),
+              );
+            }
+          : null,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 16),
+        decoration: BoxDecoration(
+          color: HomeColors.surface(context),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isClickable
+                ? HomeColors.primary(context)
+                : HomeColors.border(context),
+            width: isClickable ? 1.5 : 1.0,
           ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: statusColor.withOpacity(0.1),
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(16),
-                topRight: Radius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: HomeColors.shadowLight(context),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: statusColor.withOpacity(0.1),
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(16),
+                  topRight: Radius.circular(16),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: statusColor.withOpacity(0.2),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(Icons.store, color: statusColor, size: 20),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          order['bodega_name'] ?? 'Bodega',
+                          style: TextStyle(
+                            color: HomeColors.textPrimary(context),
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          _formatDate(order['created_at'] ?? ''),
+                          style: TextStyle(
+                            color: HomeColors.textSecondary(context),
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: statusColor,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          _getStatusLabel(status),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      if (isClickable)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Row(
+                            children: [
+                              Text(
+                                "Ver Ticket",
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: HomeColors.primary(context),
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              Icon(
+                                Icons.arrow_forward_ios_rounded,
+                                size: 10,
+                                color: HomeColors.primary(context),
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
               ),
             ),
-            child: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: statusColor.withOpacity(0.2),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(Icons.store, color: statusColor, size: 20),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+            // Items... (Rest of the code)
+
+            // Items
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  ...items
+                      .map(
+                        (item) => Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 4,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: HomeColors.primary(
+                                        context,
+                                      ).withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: Text(
+                                      "x${item['quantity']}",
+                                      style: TextStyle(
+                                        color: HomeColors.primary(context),
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Text(
+                                    item['product_name'] ?? '',
+                                    style: TextStyle(
+                                      color: HomeColors.textPrimary(context),
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              Text(
+                                "S/ ${(item['total_price'] ?? 0.0).toStringAsFixed(2)}",
+                                style: TextStyle(
+                                  color: HomeColors.textSecondary(context),
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                      .toList(),
+
+                  Divider(color: HomeColors.divider(context), height: 24),
+
+                  // Total
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
-                        order['bodega_name'] ?? 'Bodega',
+                        "Total",
                         style: TextStyle(
                           color: HomeColors.textPrimary(context),
                           fontWeight: FontWeight.bold,
                           fontSize: 16,
                         ),
                       ),
-                      const SizedBox(height: 2),
                       Text(
-                        _formatDate(order['created_at'] ?? ''),
+                        "S/ ${(order['total_amount'] ?? 0.0).toStringAsFixed(2)}",
                         style: TextStyle(
-                          color: HomeColors.textSecondary(context),
-                          fontSize: 12,
+                          color: HomeColors.primary(context),
+                          fontWeight: FontWeight.bold,
+                          fontSize: 18,
                         ),
                       ),
                     ],
                   ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: statusColor,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    _getStatusLabel(status),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-
-          // Items
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                ...items
-                    .map(
-                      (item) => Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                    vertical: 4,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: HomeColors.primary(
-                                      context,
-                                    ).withOpacity(0.1),
-                                    borderRadius: BorderRadius.circular(6),
-                                  ),
-                                  child: Text(
-                                    "x${item['quantity']}",
-                                    style: TextStyle(
-                                      color: HomeColors.primary(context),
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                                Text(
-                                  item['product_name'] ?? '',
-                                  style: TextStyle(
-                                    color: HomeColors.textPrimary(context),
-                                    fontSize: 14,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            Text(
-                              "S/ ${(item['total_price'] ?? 0.0).toStringAsFixed(2)}",
-                              style: TextStyle(
-                                color: HomeColors.textSecondary(context),
-                                fontSize: 14,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    )
-                    .toList(),
-
-                Divider(color: HomeColors.divider(context), height: 24),
-
-                // Total
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      "Total",
-                      style: TextStyle(
-                        color: HomeColors.textPrimary(context),
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                      ),
-                    ),
-                    Text(
-                      "S/ ${(order['total_amount'] ?? 0.0).toStringAsFixed(2)}",
-                      style: TextStyle(
-                        color: HomeColors.primary(context),
-                        fontWeight: FontWeight.bold,
-                        fontSize: 18,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

@@ -366,7 +366,7 @@ def get_user_orders(user_id: str, db: Session = Depends(get_db)):
     """Obtener historial de pedidos PAGADOS del usuario"""
     reservations = db.query(Reservation).filter(
         Reservation.user_id == user_id,
-        Reservation.status.in_(["PAID", "COMPLETED", "CREDIT"])  # Solo pagados o fiados
+        Reservation.status.in_(["PAID", "COMPLETED", "CREDIT", "PENDING"])  # Incluye PENDING
     ).order_by(desc(Reservation.created_at)).limit(50).all()
     
     result = []
@@ -386,7 +386,8 @@ def get_user_orders(user_id: str, db: Session = Depends(get_db)):
             "total_amount": float(res.total_amount),
             "status": res.status,
             "created_at": res.created_at.isoformat(),
-            "items": items
+            "items": items,
+            "qr_data": res.qr_code_data
         })
     
     return result

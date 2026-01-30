@@ -187,15 +187,21 @@ class GeminiService:
                 "is_inappropriate": False
             }
 
-    async def interpret_search_intent(self, user_query: str, current_state: list, intent_type: str = "SEARCH") -> list:
+    async def interpret_search_intent(self, user_query: str, current_state: list, intent_type: str = "SEARCH", known_products: list = None) -> list:
         """
         Interpreta la intención de búsqueda y actualiza el estado.
         intent_type indica si es SEARCH (nuevo), ADD (agregar) o MODIFY (modificar)
         """
         state_str = json.dumps(current_state, ensure_ascii=False, indent=2)
 
+        known_prod_str = ""
+        if known_products:
+             known_prod_str = f"CATÁLOGO MAESTRO (ÚSALO COMO REFERENCIA PARA CORREGIR NOMBRES): {json.dumps(known_products, ensure_ascii=False)}"
+
         prompt = f"""
         Eres el cerebro de búsqueda de "Chek", una app de delivery de bodegas.
+        
+        {known_prod_str}
         
         ESTADO ACTUAL DEL PEDIDO (JSON):
         {state_str}
@@ -229,7 +235,7 @@ class GeminiService:
            - NO modifiques el estado anterior
         
         REGLAS DE EXTRACCIÓN:
-        - product_name: Nombre base del producto (Ej: "Inca Kola", "Arroz", "Leche")
+        - product_name: Nombre base del producto (Ej: "Inca Kola", "Arroz", "Leche"). SI HAY CATÁLOGO MAESTRO, MAPEA AL NOMBRE MÁS CERCANO DEL CATÁLOGO.
         - quantity: Número entero (default: 1)
         - must_contain: Lista de variantes OBLIGATORIAS (ej: ["Zero", "Sin Gas", "Light"])
         - must_not_contain: Lista de cosas que NO debe tener (ej: ["gas"])
@@ -432,11 +438,38 @@ class GeminiService:
         except Exception:
             return "Aquí tienes los resultados, vecino."
 
+    async def transcribe_audio(self, audio_file_path: str) -> str:
+        """
+        Transcribe audio file to text using Gemini.
+        """
+        try:
+            # Upload file
+            print(f"🎤 [GEMINI] Subiendo audio para transcripción: {audio_file_path}")
+            myfile = self.client.files.upload(file=audio_file_path)
+            
+            prompt = "Transcribe EXACTLY what is said in this audio. If the audio is in Spanish, transcribe in Spanish. Do not add any commentary. Just the text."
+
+            def _call_gemini():
+                response = self.client.models.generate_content(
+                    model=self.model_name,
+                    contents=[myfile, prompt],
+                    config=types.GenerateContentConfig(response_mime_type="text/plain")
+                )
+                return response.text.strip()
+
+            text = await self._execute_with_retry(_call_gemini)
+            print(f"🎤 [GEMINI] Transcripción: {text}")
+            return text
+
+        except Exception as e:
+            print(f"Error transcribing audio: {e}")
+            return ""
+
     async def process_bodeguero_audio(self, audio_file_path: str):
         # Para archivos, la lógica es más compleja porque el archivo se sube.
         # Por simplicidad, aquí intentamos con el modelo actual, si falla tocaría re-subir.
         try:
-            myfile = self.client.files.upload(path=audio_file_path)
+            myfile = self.client.files.upload(file=audio_file_path)
             prompt = """Identifica productos y cantidades. JSON: {"action": "UPDATE_STOCK", ...}"""
             
             def _call_gemini():
