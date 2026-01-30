@@ -312,6 +312,7 @@ async def search_smart(request: SearchRequest, db: Session = Depends(get_db)):
                  unified = _build_unified_order_response(items, db)
                  
                  # Guardar respuesta
+                 # Guardar respuesta
                  bot_msg = ChatMessage(session_id=current_session.id, role="assistant", content=unified['message'])
                  db.add(bot_msg)
                  db.commit()

@@ -1,12 +1,14 @@
 import requests
 import json
 from app.core.config import settings
+from app.core.security import decrypt_value
 
 class NotificationService:
     def __init__(self):
         self.app_id = settings.ONESIGNAL_APP_ID
         self.api_key = settings.ONESIGNAL_API_KEY
         self.base_url = "https://onesignal.com/api/v1/notifications"
+
 
     def send_notification(self, title: str, message: str, player_ids: list = None, data: dict = None):
         """
@@ -15,10 +17,20 @@ class NotificationService:
         Args:
             title (str): Título de la notificación.
             message (str): Cuerpo del mensaje.
-            player_ids (list, optional): Lista de IDs de dispositivos (OneSignal Player IDs). 
+            player_ids (list, optional): Lista de IDs de dispositivos (Base64 Encrypted). 
                                        Si es None, envía a TODOS (Segments: ['All']).
             data (dict, optional): Datos adicionales para enviar en el payload.
         """
+        
+        # Desencriptar tokens antes de enviar a OneSignal
+        decrypted_ids = []
+        if player_ids:
+            for pid in player_ids:
+                if pid:
+                    decrypted = decrypt_value(pid)
+                    if decrypted:
+                        decrypted_ids.append(decrypted)
+        
         
         headers = {
             "Content-Type": "application/json; charset=utf-8",
@@ -32,8 +44,8 @@ class NotificationService:
             "data": data or {}
         }
 
-        if player_ids:
-            payload["include_player_ids"] = player_ids
+        if decrypted_ids:
+            payload["include_player_ids"] = decrypted_ids
         else:
             payload["included_segments"] = ["All"]
 

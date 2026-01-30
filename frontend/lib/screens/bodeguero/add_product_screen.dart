@@ -249,6 +249,11 @@ class _AddProductScreenState extends State<AddProductScreen> {
 
   // Getter para nombre computado
   String get _computedName {
+    // Si elegimos un producto maestro, usar su nombre tal cual (ya verificado)
+    if (_selectedMasterId != null && _nameCtrl.text.isNotEmpty) {
+      return _nameCtrl.text;
+    }
+
     if (_selectedCategory?.name == 'Otros') return _nameCtrl.text;
     String sub = _selectedSubCategory?.name ?? '';
 
@@ -509,9 +514,8 @@ class _AddProductScreenState extends State<AddProductScreen> {
       String volume = (data['volume'] ?? "").toString();
       _parseVolume(volume);
 
-      if (_selectedCategory?.name == 'Otros') {
-        _nameCtrl.text = data['suggested_name'] ?? "";
-      }
+      // SIEMPRE guardar el nombre sugerido, para usarlo si es Master Product
+      _nameCtrl.text = data['suggested_name'] ?? "";
     });
 
     // Feedback
@@ -1417,10 +1421,13 @@ class _AddProductScreenState extends State<AddProductScreen> {
                           padding: const EdgeInsets.all(16),
                           margin: const EdgeInsets.only(bottom: 24),
                           decoration: BoxDecoration(
-                            color: BColors.primary(context).withOpacity(0.1),
+                            color: BColors.primary(
+                              context,
+                            ).withOpacity(0.2), // Un poco más oscuro
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
-                              color: BColors.primary(context).withOpacity(0.5),
+                              color: BColors.primary(context),
+                              width: 1.5,
                             ),
                           ),
                           child: Column(
@@ -1446,28 +1453,40 @@ class _AddProductScreenState extends State<AddProductScreen> {
                               const SizedBox(height: 12),
                               Text(
                                 _computedName,
-                                style: const TextStyle(
-                                  color: Colors.white,
+                                style: TextStyle(
+                                  color: BColors.textPrimary(
+                                    context,
+                                  ), // Texto negro/oscuro
                                   fontSize: 18,
                                   fontWeight: FontWeight.bold,
                                 ),
                               ),
                               const SizedBox(height: 12),
-                              Divider(color: Colors.white12),
+                              Divider(
+                                color: BColors.primary(
+                                  context,
+                                ).withOpacity(0.2),
+                              ),
                               const SizedBox(height: 8),
                               Text(
                                 "Categoría: ${_selectedCategory?.name ?? '...'}",
-                                style: TextStyle(color: Colors.white70),
+                                style: TextStyle(
+                                  color: BColors.textSecondary(context),
+                                ),
                               ),
                               if (_brandCtrl.text.isNotEmpty)
                                 Text(
                                   "Marca: ${_brandCtrl.text}",
-                                  style: TextStyle(color: Colors.white70),
+                                  style: TextStyle(
+                                    color: BColors.textSecondary(context),
+                                  ),
                                 ),
                               if (_selectedSubCategory != null)
                                 Text(
                                   "Tipo: ${_selectedSubCategory?.name}",
-                                  style: TextStyle(color: Colors.white70),
+                                  style: TextStyle(
+                                    color: BColors.textSecondary(context),
+                                  ),
                                 ),
                             ],
                           ),

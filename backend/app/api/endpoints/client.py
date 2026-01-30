@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime, timedelta
 import uuid
+from app.core.security import decrypt_value
 
 router = APIRouter()
 
@@ -104,8 +105,8 @@ def get_user_profile(user_id: str, db: Session = Depends(get_db)):
         "id": str(user.id),
         "first_name": first_name,
         "full_name": full_name,
-        "phone": user.phone_number,
-        "email": user.email,
+        "phone": decrypt_value(user.phone_number),
+        "email": decrypt_value(user.email),
         "is_verified": user.is_verified
     }
 

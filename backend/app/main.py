@@ -51,4 +51,8 @@ app.include_router(client.router, prefix="/api/v1/client", tags=["client"])
 
 @app.get("/")
 def root():
-    return {"message": "🚀 API Bodega Inteligente está corriendo con Gemini 3"}
+    return {"message": "🚀 API Bodega Inteligente está corriendo con Gemini 3"} 
+ 
+ 
+ 
+ 

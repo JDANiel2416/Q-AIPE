@@ -2,6 +2,8 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../services/session_service.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../user/home_screen.dart';
 import 'login_screen.dart';
 import '../bodeguero/dashboard_screen.dart';
@@ -55,6 +57,35 @@ class _SplashScreenState extends State<SplashScreen>
     ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeIn));
 
     _controller.forward();
+    _checkFirstTimeAndPermissions();
+  }
+
+  Future<void> _checkFirstTimeAndPermissions() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      // Usamos una key única para verificar si ya pedimos permisos
+      final bool hasRequested =
+          prefs.getBool('initial_permissions_requested_v1') ?? false;
+
+      if (!hasRequested) {
+        setState(() => _status = "Configurando permisos...");
+
+        // Pedimos todos los permisos de una vez
+        await [
+          Permission.locationWhenInUse,
+          Permission.microphone,
+          Permission.notification,
+          Permission.camera,
+        ].request();
+
+        // Marcar como solicitados para no pedir de nuevo en cada inicio
+        await prefs.setBool('initial_permissions_requested_v1', true);
+      }
+    } catch (e) {
+      print("⚠️ Error solicitando permisos iniciales: $e");
+    }
+
+    // Continuar con el flujo normal
     _checkSession();
   }
 

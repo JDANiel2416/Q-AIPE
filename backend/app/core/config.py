@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     ONESIGNAL_APP_ID: str
     ONESIGNAL_API_KEY: str
 
+    # Seguridad
+    ENCRYPTION_KEY: str
+
     # Configuración para leer el archivo .env automáticamente
     class Config:
         env_file = ".env"

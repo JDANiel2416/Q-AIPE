@@ -5,6 +5,7 @@ from app.models.tables import Reservation, ReservationItem, User, Bodega
 from pydantic import BaseModel
 from typing import List
 import uuid
+from app.core.security import encrypt_value, decrypt_value
 
 router = APIRouter()
 
@@ -43,7 +44,7 @@ async def create_reservation(request: CreateReservationRequest, db: Session = De
             bodega_id=request.bodega_id,
             total_amount=total_amount,
             status="PENDING",  # Pendiente hasta que bodeguero confirme
-            qr_code_data=qr_data
+            qr_code_data=encrypt_value(qr_data)
         )
         db.add(new_reservation)
         db.flush() # Para obtener el ID si fuera autoincrement (aquí ya lo tenemos)
@@ -162,7 +163,12 @@ def validate_reservation(
 ):
     # QR Format: RES|uuid|amount
     try:
-        parts = request.qr_data.split('|')
+        # Desencriptar primero
+        decrypted_qr = decrypt_value(request.qr_data)
+        if not decrypted_qr:
+             raise HTTPException(status_code=400, detail="Código QR inválido o corrupto")
+
+        parts = decrypted_qr.split('|')
         if len(parts) < 2 or parts[0] != "RES":
             raise HTTPException(status_code=400, detail="Código QR inválido o formato desconocido")
             

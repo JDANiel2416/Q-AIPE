@@ -15,9 +15,16 @@ class User(Base):
     full_name = Column(String, nullable=True)
     
     # Credenciales & Contacto
-    phone_number = Column(String, unique=True, nullable=True)
-    email = Column(String, unique=True, nullable=True)
-    password_hash = Column(String, nullable=True) # Nunca guardamos texto plano
+    # Credenciales & Contacto
+    # DATOS ENCRIPTADOS (No buscables directamente)
+    phone_number = Column(String, nullable=True) # Encriptado
+    email = Column(String, nullable=True)        # Encriptado
+    
+    # DATOS CONFIDENCIALES PARA BUSQUEDA (Hash determinista)
+    phone_hash = Column(String, unique=True, nullable=True, index=True) 
+    email_hash = Column(String, unique=True, nullable=True, index=True)
+
+    password_hash = Column(String, nullable=True) # Bcrypt hash (nunca texto plano)
     
     # Roles y Estados
     role = Column(String, default="CLIENT") # 'CLIENT', 'BODEGUERO', 'ADMIN'

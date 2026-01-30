@@ -485,19 +485,26 @@ class ApiService {
 
   // --- NUEVO: AUTH ---
 
-  Future<Map<String, dynamic>> consultDni(String dni) async {
+  Future<Map<String, dynamic>> consultDni(
+    String dni, {
+    String? firstName,
+    String? lastName,
+  }) async {
     final url = Uri.parse('$baseUrl/auth/consult_dni');
     try {
-      print("🔵 Enviando DNI a: $url"); // <--- Debug
+      print("🔵 Enviando DNI a: $url");
+
+      final Map<String, dynamic> body = {"dni": dni};
+      if (firstName != null) body["first_name"] = firstName;
+      if (lastName != null) body["last_name"] = lastName;
+
       final response = await http.post(
         url,
         headers: {"Content-Type": "application/json"},
-        body: jsonEncode({"dni": dni}),
+        body: jsonEncode(body),
       );
 
-      print(
-        "🟢 Respuesta Backend (${response.statusCode}): ${response.body}",
-      ); // <--- ¡AQUÍ VEREMOS EL JSON!
+      print("🟢 Respuesta Backend (${response.statusCode}): ${response.body}");
 
       if (response.statusCode == 200) {
         return jsonDecode(utf8.decode(response.bodyBytes));
@@ -505,7 +512,7 @@ class ApiService {
         return {"success": false, "message": "Error de conexión"};
       }
     } catch (e) {
-      print("🔴 Error en ApiService: $e"); // <--- Debug
+      print("🔴 Error en ApiService: $e");
       return {"success": false, "message": "Error: $e"};
     }
   }

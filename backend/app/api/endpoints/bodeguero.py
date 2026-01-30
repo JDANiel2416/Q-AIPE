@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from app.db.session import get_db
 from app.services.gemini_service import gemini_client
 from app.models.tables import User, Bodega, StoreInventory, MasterProduct, Category, SubCategory
+from app.core.security import encrypt_value, decrypt_value
 
 from app.schemas.api_schemas import ProductCreateRequest
 from pydantic import BaseModel
@@ -353,8 +354,8 @@ def get_profile(user_id: str, db: Session = Depends(get_db)):
     return {
         "user_id": str(user.id),
         "full_name": user.full_name or "",
-        "email": user.email or "",
-        "phone_number": user.phone_number or "",
+        "email": decrypt_value(user.email) or "",
+        "phone_number": decrypt_value(user.phone_number) or "",
         "dni": user.dni or "",
         "bodega_name": bodega.name if bodega else "",
         "bodega_address": bodega.address if bodega else "",
@@ -374,8 +375,8 @@ def update_profile(
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
     
     # 2. Actualizar datos de usuario
-    user.email = profile_data.email
-    user.phone_number = profile_data.phone_number
+    user.email = encrypt_value(profile_data.email)
+    user.phone_number = encrypt_value(profile_data.phone_number)
     
     # 3. Buscar y actualizar bodega
     bodega = db.query(Bodega).filter(Bodega.owner_id == user.id).first()
@@ -773,7 +774,7 @@ def get_debtors(user_id: str, db: Session = Depends(get_db)):
         debtors_list.append({
             "user_id": str(debtor.user_id),
             "client_name": debtor.client_name or "Cliente Anónimo",
-            "phone": debtor.phone or "",
+            "phone": decrypt_value(debtor.phone) or "",
             "total_debt": debt_amount,
             "orders_count": debtor.orders_count
         })
