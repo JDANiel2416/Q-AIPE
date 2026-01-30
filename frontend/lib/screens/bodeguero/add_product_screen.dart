@@ -8,12 +8,19 @@ import 'package:flutter/services.dart';
 
 import 'bodeguero_colors.dart';
 import 'package:image_picker/image_picker.dart';
-
-import 'dart:io';
 import 'bulk_review_screen.dart';
 
+import 'dart:io';
+
 class AddProductScreen extends StatefulWidget {
-  const AddProductScreen({super.key});
+  final Map<String, dynamic>? initialData;
+  final bool isEditMode;
+
+  const AddProductScreen({
+    super.key,
+    this.initialData,
+    this.isEditMode = false,
+  });
 
   @override
   State<AddProductScreen> createState() => _AddProductScreenState();
@@ -21,6 +28,11 @@ class AddProductScreen extends StatefulWidget {
 
 class _AddProductScreenState extends State<AddProductScreen> {
   final _formKey = GlobalKey<FormState>();
+  // Atributos Granulares
+  bool _sugarFree = false;
+  bool _lactoseFree = false;
+  final TextEditingController _flavorCtrl = TextEditingController();
+
   final _api = ApiService();
   bool _isLoading = false;
   bool _isScanning = false; // Estado para el loading del escaneo
@@ -143,6 +155,8 @@ class _AddProductScreenState extends State<AddProductScreen> {
     }
   }
 
+  int? _selectedMasterId;
+
   Future<void> _loadSubCategories() async {
     if (_selectedCategory == null) {
       setState(() => _subCategories = []);
@@ -261,143 +275,97 @@ class _AddProductScreenState extends State<AddProductScreen> {
   }
 
   // --- LÓGICA DE ESCANEO IA ---
-  Future<void> _scanWithAI() async {
+  Future<String?> _scanWithAI() async {
     final picker = ImagePicker();
-    // 1. Capturar foto
     final pickedFile = await picker.pickImage(
       source: ImageSource.camera,
-      imageQuality: 85,
+      imageQuality: 50,
+      maxWidth: 800,
     );
 
-    if (pickedFile == null) return; // Cancelado por usuario
+    if (pickedFile == null) return null;
 
     setState(() => _isScanning = true);
 
-    // 2. Enviar al backend
-    final result = await _api.scanMagicProduct(File(pickedFile.path));
+    File imageFile = File(pickedFile.path);
 
-    setState(() => _isScanning = false);
+    try {
+      final result = await _api.scanBulkProducts(imageFile);
 
-    if (result['success']) {
-      final aiData = result['ai_data'];
-      final int? masterId = result['found_master_id'];
+      setState(() => _isScanning = false);
 
-      if (aiData == null) return;
-
-      // 3. Validar contenido inapropiado o irrelevante
-      bool isValid =
-          aiData['is_valid'] ?? true; // Backward compatibility default true
-      if (!isValid) {
-        String reason =
-            aiData['reason'] ?? "La imagen no muestra un producto válido.";
-
+      if (result['error'] == true) {
         if (mounted) {
-          showDialog(
-            context: context,
-            builder: (ctx) => AlertDialog(
-              backgroundColor: const Color(0xFF1A1F2E),
-              title: const Row(
-                children: [
-                  Icon(Icons.warning_amber_rounded, color: Colors.orangeAccent),
-                  SizedBox(width: 8),
-                  Text(
-                    "Imagen No Válida",
-                    style: TextStyle(color: Colors.white),
-                  ),
-                ],
-              ),
-              content: Text(
-                reason,
-                style: const TextStyle(color: Colors.white70, fontSize: 16),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  child: const Text(
-                    "Entendido",
-                    style: TextStyle(color: Colors.white),
-                  ),
-                ),
-                ElevatedButton(
-                  onPressed: () {
-                    Navigator.pop(ctx);
-                    _scanWithAI(); // Reintentar inmediatamente
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: BColors.primary(context),
-                  ),
-                  child: const Text("Intentar de nuevo"),
-                ),
-              ],
-            ),
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(result['message'] ?? "Error desconocido")),
           );
         }
-        return;
+        return null;
       }
 
-      // 4. Mapear datos si es válido
-      _populateFromAI(aiData, masterId);
-    } else {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error IA: ${result['message']}'),
-            backgroundColor: Colors.redAccent,
-          ),
-        );
-      }
-    }
-  }
+      final List<dynamic> products = result['products'] ?? [];
 
-  // --- ESCANEO MASIVO ---
-  Future<void> _scanBulkWithAI() async {
-    final picker = ImagePicker();
-    final pickedFile = await picker.pickImage(
-      source: ImageSource.camera,
-      imageQuality: 85,
-    );
-    if (pickedFile == null) return;
-
-    setState(() => _isScanning = true);
-
-    final result = await _api.scanBulkProducts(File(pickedFile.path));
-
-    setState(() => _isScanning = false);
-
-    if (result.containsKey('products')) {
-      final List<dynamic> products = result['products'];
       if (products.isEmpty) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text("No se detectaron productos")),
           );
         }
-        return;
+        return null;
       }
 
-      if (mounted) {
-        // Navegar a la pantalla de revisión
-        // Necesitamos importar bulk_review_screen.dart al inicio del archivo
-        // Como no puedo añadir imports fácilmente sin arruinar el resto, usaré ruta nombrada o import dinámico simulado
-        // Asumo que el user prefirio crear una nueva pantalla.
-        final result = await Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => BulkReviewScreen(products: products),
-          ),
-        );
-
-        if (mounted && result == true) {
-          Navigator.pop(context, true);
+      if (products.length == 1) {
+        // CASO 1: Un solo producto -> Populate
+        Map<String, dynamic> aiData = products[0];
+        _selectedMasterId = null;
+        _populateFromAI(aiData, null);
+        return aiData['suggested_name'];
+      } else {
+        // CASO 2: Múltiples -> Pantalla de Revisión Masiva
+        if (mounted) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => BulkReviewScreen(products: products),
+            ),
+          );
         }
+        return null;
       }
-    } else {
+    } catch (e) {
+      setState(() => _isScanning = false);
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text("Error: ${result['message']}")));
+        ).showSnackBar(SnackBar(content: Text("Error: $e")));
       }
+      return null;
     }
+  }
+
+  // --- HELPER PARA AUTOCOMPLETE ---
+  void _fillFormFromMaster(Map<String, dynamic> masterData) {
+    setState(() {
+      _selectedMasterId = masterData['id'];
+    });
+
+    final attrs = masterData['attributes'] ?? {};
+
+    Map<String, dynamic> aiFormat = {
+      "suggested_name": masterData['name'],
+      "product_category": masterData['category'],
+      "subcategory": masterData['subcategory'],
+      "brand": attrs['marca'],
+      "volume":
+          attrs['contenido_neto'] ??
+          attrs['capacidad'] ??
+          attrs['detalle'] ??
+          "",
+      "attributes": attrs,
+      "derived_attributes": {},
+    };
+
+    _populateFromAI(aiFormat, masterData['id']);
   }
 
   void _populateFromAI(Map<String, dynamic> data, int? masterId) {
@@ -405,19 +373,37 @@ class _AddProductScreenState extends State<AddProductScreen> {
     // check gemini_service.py: suggested_name, brand, category, volume, is_alcoholic
 
     // 1. Determine Category Name Target
-    String rawCat = (data['category'] ?? "Otros").toString().toUpperCase();
+    String rawCat = (data['product_category'] ?? data['category'] ?? "Otros")
+        .toString();
     String targetCatName = 'Otros';
 
-    if (rawCat.contains("BEBIDA") ||
-        rawCat.contains("GASEOSA") ||
-        rawCat.contains("CERVEZA")) {
-      targetCatName = 'Bebidas';
-    } else if (rawCat.contains("LIMPIEZA") || rawCat.contains("ASEO")) {
-      targetCatName = 'Limpieza';
-    } else if (rawCat.contains("ABARROTE") ||
-        rawCat.contains("ALIMENTO") ||
-        rawCat.contains("SNACK")) {
-      targetCatName = 'Abarrotes';
+    // Primary Strategy: Strict Match against loaded categories
+    try {
+      var directMatch = _categories.firstWhere(
+        (c) => c.name.toUpperCase() == rawCat.toUpperCase(),
+      );
+      targetCatName = directMatch.name;
+    } catch (_) {
+      // Secondary Strategy: Heuristic keywords
+      String upRaw = rawCat.toUpperCase();
+      if (upRaw.contains("BEBIDA") ||
+          upRaw.contains("GASEOSA") ||
+          upRaw.contains("CERVEZA") ||
+          upRaw.contains("ALCOHOL")) {
+        targetCatName = 'Bebidas';
+      } else if (upRaw.contains("LIMPIEZA") || upRaw.contains("ASEO")) {
+        targetCatName = 'Limpieza';
+      } else if (upRaw.contains("ABARROTE") ||
+          upRaw.contains("ALIMENTO") ||
+          upRaw.contains("SNACK") ||
+          upRaw.contains("Abarrotes")) {
+        // Added explicit Abarrotes check in case of plural diff
+        targetCatName = 'Abarrotes';
+      } else if (upRaw.contains("MASCOTA")) {
+        targetCatName = 'Mascotas';
+      } else if (upRaw.contains("PERSONAL") || upRaw.contains("CUIDADO")) {
+        targetCatName = 'Cuidado Personal';
+      }
     }
 
     setState(() {
@@ -481,10 +467,8 @@ class _AddProductScreenState extends State<AddProductScreen> {
         // 7. Set Brand (Async part)
         String aiBrand = (data['brand'] ?? "").toString();
         if (aiBrand.isNotEmpty) {
-          // Check if predefined
           String? subName = _selectedSubCategory?.name;
           if (subName != null && _brandsBySubCategory.containsKey(subName)) {
-            // Try to match
             try {
               String matchedBrand = _brandsBySubCategory[subName]!.firstWhere(
                 (b) =>
@@ -498,10 +482,24 @@ class _AddProductScreenState extends State<AddProductScreen> {
               _brandCtrl.text = aiBrand;
             }
           } else {
-            // No predefined brands for this subcat
             _selectedBrandPredefined = null;
             _brandCtrl.text = aiBrand;
           }
+        }
+
+        // 9. Granular Attributes (Moved here to run AFTER defaults reset)
+        final attrs = data['attributes'] ?? {};
+
+        // GAS logic override
+        if (attrs['has_gas'] != null) {
+          _hasGas = attrs['has_gas'] == true;
+        }
+
+        if (attrs['sugar_free'] == true) _sugarFree = true;
+        if (attrs['lactose_free'] == true) _lactoseFree = true;
+
+        if (attrs['flavor'] != null) {
+          _flavorCtrl.text = attrs['flavor'].toString();
         }
       });
     });
@@ -572,17 +570,17 @@ class _AddProductScreenState extends State<AddProductScreen> {
 
     Map<String, dynamic> dynamicAttributes = {
       "marca": _brandCtrl.text,
-      if (_selectedSubCategory != null) "tipo": _selectedSubCategory,
+      if (_selectedSubCategory != null) "tipo": _selectedSubCategory?.name,
     };
 
     // Construir atributos según categoría
-    if (_selectedCategory == 'Bebidas') {
+    if (_selectedCategory?.name == 'Bebidas') {
       dynamicAttributes["capacidad"] = "${_contentCtrl.text} $_selectedUnit";
 
       // Solo guardar 'gas' si es relevante o si es Agua (donde es opcional)
-      if (_selectedSubCategory == 'Agua' ||
-          _selectedSubCategory == 'Gaseosa' ||
-          _selectedSubCategory == 'Energizante') {
+      if (_selectedSubCategory?.name == 'Agua' ||
+          _selectedSubCategory?.name == 'Gaseosa' ||
+          _selectedSubCategory?.name == 'Energizante') {
         dynamicAttributes["gas"] = _hasGas;
       }
       // Para otros (Jugo, Rehidratante, Licor) asumimos sin gas usualmente o no relevante,
@@ -590,28 +588,47 @@ class _AddProductScreenState extends State<AddProductScreen> {
       // Según requerimiento: "gaseosas siempre tienen gas... jugos nunca".
       // Vamos a guardar la propiedad 'gas' explícitamente solo para Agua,
       // para los demás, se puede inferir del tipo, pero lo guardaremos si es TRUE para consistencia.
-      if (_hasGas && _selectedSubCategory != 'Agua') {
+      if (_hasGas && _selectedSubCategory?.name != 'Agua') {
         dynamicAttributes["gas"] = true;
       }
       // Específicamente para Agua, guardamos el false también para distinguir "Con Gas" / "Sin Gas"
-      if (_selectedSubCategory == 'Agua') {
+      if (_selectedSubCategory?.name == 'Agua') {
         dynamicAttributes["gas"] = _hasGas;
       }
-    } else if (_selectedCategory == 'Limpieza' ||
-        _selectedCategory == 'Abarrotes') {
+    } else if (_selectedCategory?.name == 'Limpieza' ||
+        _selectedCategory?.name == 'Abarrotes') {
       dynamicAttributes["contenido_neto"] =
           "${_contentCtrl.text} $_selectedUnit";
+
+      // Lácteos logic
+      if (_selectedSubCategory?.name.contains('Leche') == true ||
+          _selectedSubCategory?.name.contains('Yogurt') == true) {
+        if (_lactoseFree) dynamicAttributes["sin_lactosa"] = true;
+        if (_flavorCtrl.text.isNotEmpty)
+          dynamicAttributes["sabor"] = _flavorCtrl.text;
+      }
+
+      // Golosinas / Snacks / Jugos (Abarrotes/Bebidas overlap depending on taxonomy)
+      if (_flavorCtrl.text.isNotEmpty)
+        dynamicAttributes["sabor"] = _flavorCtrl.text;
     } else {
       dynamicAttributes["detalle"] = _contentCtrl.text.isNotEmpty
           ? "${_contentCtrl.text} $_selectedUnit"
           : "N/A";
     }
 
+    // Common optional attributes
+    if (_sugarFree) dynamicAttributes["sin_azucar"] = true;
+    if (_flavorCtrl.text.isNotEmpty &&
+        !dynamicAttributes.containsKey("sabor")) {
+      dynamicAttributes["sabor"] = _flavorCtrl.text;
+    }
+
     final newProduct = ProductCreateRequest(
       name: _computedName,
-      category: _selectedCategory!
-          .name, // Mandamos string al backend (backward compat)
-      subCategoryId: _selectedSubCategory?.id, // Mandamos ID nuevo
+      category: _selectedCategory!.name,
+      subCategoryId: _selectedSubCategory?.id,
+      masterProductId: _selectedMasterId, // NUEVO: Enviar Master ID
       price: double.parse(_priceCtrl.text),
       stock: int.parse(_stockCtrl.text),
       attributes: dynamicAttributes,
@@ -624,153 +641,100 @@ class _AddProductScreenState extends State<AddProductScreen> {
     if (result['success']) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Producto agregado correctamente 📦'),
-            backgroundColor: BColors.primary(context),
-          ),
+          const SnackBar(content: Text("Producto agregado correctamente ✅")),
         );
         Navigator.pop(context, true);
       }
     } else {
       if (mounted) {
         if (result['status'] == 409) {
-          // ALERTA DE DUPLICADO
-          showDialog(
-            context: context,
-            builder: (ctx) => AlertDialog(
-              backgroundColor: const Color(0xFF1A1F2E),
-              title: Text(
-                "Producto Existente",
-                style: TextStyle(color: Colors.white),
-              ),
-              content: Text(
-                result['message'] ?? "Este producto ya está en tu lista.",
-                style: TextStyle(color: Colors.white70),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  child: Text(
-                    "Cancelar",
-                    style: TextStyle(color: Colors.white70),
-                  ),
-                ),
-                TextButton(
-                  onPressed: () {
-                    Navigator.pop(ctx); // Cerrar primer diálogo
-                    _showUpdateConfirmation(); // Mostrar confirmación
-                  },
-                  child: Text(
-                    "Modificar Producto",
-                    style: TextStyle(
-                      color: Color(0xFF00D9FF),
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          );
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Error: ${result['message']}'),
-              backgroundColor: Colors.redAccent,
-            ),
-          );
+          _showUpdateConfirmation(conflictId: result['product_id']);
+          return;
         }
+
+        // Diferenciar errores
+        bool isSafety =
+            (result['message'] ?? "").toString().contains("seguridad") ||
+            result['status'] == 400;
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result['message'] ?? "Error desconocido"),
+            backgroundColor: isSafety ? Colors.red : Colors.orange,
+            duration: Duration(seconds: 5),
+          ),
+        );
       }
+      return; // Stop execution
     }
   }
 
-  void _showUpdateConfirmation() async {
+  void _showUpdateConfirmation({int? conflictId}) {
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1F2E),
-        title: Text(
-          "Confirmar Actualización",
-          style: TextStyle(color: Colors.white),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              "¿Deseas actualizar el producto existente con estos nuevos datos?",
-              style: TextStyle(color: Colors.white70),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              "Precio: S/ ${_priceCtrl.text}",
-              style: TextStyle(
-                color: BColors.primary(context),
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            Text(
-              "Stock: ${_stockCtrl.text}",
-              style: TextStyle(
-                color: BColors.primary(context),
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ],
+      builder: (context) => AlertDialog(
+        title: const Text("Producto existente"),
+        content: const Text(
+          "Este producto ya existe en tu inventario. ¿Deseas actualizar el stock y el precio con los datos ingresados?",
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text("Cancelar", style: TextStyle(color: Colors.white70)),
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Cancelar"),
           ),
-          ElevatedButton(
-            onPressed: () async {
-              Navigator.pop(ctx); // Cerrar diálogo de confirmación
-              await _performUpdate();
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _performUpdate(conflictId: conflictId);
             },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: BColors.primary(context),
-              foregroundColor: Colors.white,
-            ),
-            child: Text(
-              "Confirmar",
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
+            child: const Text("Actualizar"),
           ),
         ],
       ),
     );
   }
 
-  Future<void> _performUpdate() async {
-    setState(() => _isLoading = true);
-
+  Future<void> _performUpdate({int? conflictId}) async {
     final userId = await SessionService().getUserId();
     if (userId == null) return;
 
-    final result = await _api.updateProduct(
-      userId,
-      _computedName, // Usamos el nombre generado
-      _selectedCategory!.name,
-      double.parse(_priceCtrl.text),
-      int.parse(_stockCtrl.text),
-    );
+    setState(() => _isLoading = true);
 
-    setState(() => _isLoading = false);
+    Map<String, dynamic> result;
+    int? targetId = conflictId ?? _selectedMasterId;
+
+    if (targetId != null) {
+      result = await _api.updateProductStock(
+        userId,
+        targetId,
+        double.parse(_priceCtrl.text),
+        int.parse(_stockCtrl.text),
+      );
+    } else {
+      result = await _api.updateProduct(
+        userId,
+        _computedName,
+        _selectedCategory!.name,
+        double.parse(_priceCtrl.text),
+        int.parse(_stockCtrl.text),
+      );
+    }
 
     if (mounted) {
-      if (result['success']) {
+      setState(() => _isLoading = false);
+      if (result['success'] == true) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Producto actualizado correctamente ✅'),
-            backgroundColor: BColors.primary(context),
+          const SnackBar(
+            content: Text("Producto actualizado correctamente"),
+            backgroundColor: Colors.green,
           ),
         );
-        Navigator.pop(context, true); // Volver a la pantalla anterior
+        Navigator.pop(context, true);
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error: ${result['message']}'),
-            backgroundColor: Colors.redAccent,
+            content: Text(result['message'] ?? "Error al actualizar"),
+            backgroundColor: Colors.red,
           ),
         );
       }
@@ -1008,7 +972,8 @@ class _AddProductScreenState extends State<AddProductScreen> {
     }
 
     // Checkbox de GAS
-    if (_selectedCategory == 'Bebidas' && _selectedSubCategory == 'Agua') {
+    if (_selectedCategory?.name == 'Bebidas' &&
+        _selectedSubCategory?.name == 'Agua') {
       fields.add(const SizedBox(height: 12));
       fields.add(
         Container(
@@ -1026,6 +991,69 @@ class _AddProductScreenState extends State<AddProductScreen> {
             activeColor: BColors.primary(context),
             checkColor: Colors.white,
           ),
+        ),
+      );
+    }
+
+    // --- NUEVOS ATRIBUTOS GRANULARES ---
+
+    if (_shouldShowFlavor()) {
+      fields.add(const SizedBox(height: 12));
+      fields.add(
+        Container(
+          decoration: BoxDecoration(
+            color: BColors.surfaceVariant(context),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: TextFormField(
+            controller: _flavorCtrl,
+            style: TextStyle(color: BColors.textPrimary(context)),
+            decoration: InputDecoration(
+              hintText: "Sabor / Variedad",
+              hintStyle: TextStyle(color: BColors.textSecondary(context)),
+              border: InputBorder.none,
+              contentPadding: EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 16,
+              ),
+              prefixIcon: Icon(
+                Icons.incomplete_circle,
+                color: BColors.textSecondary(context),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    if (_shouldShowSugarFree()) {
+      fields.add(const SizedBox(height: 8));
+      fields.add(
+        SwitchListTile(
+          title: Text(
+            "Sin Azúcar / Zero",
+            style: TextStyle(color: BColors.textPrimary(context)),
+          ),
+          value: _sugarFree,
+          onChanged: (val) => setState(() => _sugarFree = val),
+          activeColor: BColors.primary(context),
+          contentPadding: EdgeInsets.symmetric(horizontal: 4),
+        ),
+      );
+    }
+
+    if (_shouldShowLactoseFree()) {
+      fields.add(const SizedBox(height: 8));
+      fields.add(
+        SwitchListTile(
+          title: Text(
+            "Sin Lactosa",
+            style: TextStyle(color: BColors.textPrimary(context)),
+          ),
+          value: _lactoseFree,
+          onChanged: (val) => setState(() => _lactoseFree = val),
+          activeColor: BColors.primary(context),
+          contentPadding: EdgeInsets.symmetric(horizontal: 4),
         ),
       );
     }
@@ -1092,6 +1120,8 @@ class _AddProductScreenState extends State<AddProductScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      const SizedBox(height: 16),
+
                       Text(
                         "Datos Básicos",
                         style: TextStyle(
@@ -1102,183 +1132,347 @@ class _AddProductScreenState extends State<AddProductScreen> {
                       ),
                       const SizedBox(height: 16),
 
-                      // BOTONES DE IA (Fila)
+                      // BUSCADOR INTELIGENTE / ESCÁNER
                       Container(
                         margin: const EdgeInsets.only(bottom: 24),
-                        child: Row(
-                          children: [
-                            // Botón Simple
-                            Expanded(
-                              child: ElevatedButton.icon(
-                                onPressed: _isScanning ? null : _scanWithAI,
-                                icon: _isScanning
-                                    ? const SizedBox(
-                                        width: 20,
-                                        height: 20,
-                                        child: CircularProgressIndicator(
-                                          color: Colors.white,
-                                          strokeWidth: 2,
-                                        ),
-                                      )
-                                    : const Icon(Icons.camera_alt_outlined),
-                                label: const Text("1 Prod."),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFF6C63FF),
-                                  foregroundColor: Colors.white,
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 16,
-                                  ),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            // Botón Masivo
-                            Expanded(
-                              child: ElevatedButton.icon(
-                                onPressed: _isScanning ? null : _scanBulkWithAI,
-                                icon: _isScanning
-                                    ? const SizedBox(
-                                        width: 20,
-                                        height: 20,
-                                        child: CircularProgressIndicator(
-                                          color: Colors.white,
-                                          strokeWidth: 2,
-                                        ),
-                                      )
-                                    : const Icon(Icons.burst_mode),
-                                label: const Text("Masivo"),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(
-                                    0xFF00C853,
-                                  ), // Verde para diferenciar
-                                  foregroundColor: Colors.white,
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 16,
-                                  ),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-
-                      // Dropdown de categoría
-                      Container(
-                        decoration: BoxDecoration(
-                          color: BColors.surfaceVariant(context),
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: ButtonTheme(
-                          alignedDropdown: true,
-                          child: DropdownButtonFormField<CategoryModel>(
-                            value: _selectedCategory,
-                            items: _categories
-                                .map(
-                                  (c) => DropdownMenuItem(
-                                    value: c,
-                                    child: Text(
-                                      c.name,
+                        child: LayoutBuilder(
+                          builder: (context, constraints) {
+                            return RawAutocomplete<Map<String, dynamic>>(
+                              optionsBuilder:
+                                  (TextEditingValue textEditingValue) async {
+                                    if (textEditingValue.text.length < 2) {
+                                      return const Iterable<
+                                        Map<String, dynamic>
+                                      >.empty();
+                                    }
+                                    return await _api.searchMasterProducts(
+                                      textEditingValue.text,
+                                    );
+                                  },
+                              displayStringForOption: (option) =>
+                                  option['name'] ?? '',
+                              onSelected: (Map<String, dynamic> selection) {
+                                _fillFormFromMaster(selection);
+                              },
+                              fieldViewBuilder:
+                                  (
+                                    context,
+                                    textEditingController,
+                                    focusNode,
+                                    onFieldSubmitted,
+                                  ) {
+                                    // Sincronizar con el controlador de nombre si es "Otros"
+                                    // o usar este como el principal.
+                                    // Para simplificar, usaremos este como el buscador principal.
+                                    return TextField(
+                                      controller: textEditingController,
+                                      focusNode: focusNode,
                                       style: TextStyle(
                                         color: BColors.textPrimary(context),
                                       ),
+                                      decoration: InputDecoration(
+                                        labelText: "Buscar o Escanear Producto",
+                                        hintText: "Ej: Coca Cola, Arroz...",
+                                        labelStyle: TextStyle(
+                                          color: BColors.textSecondary(context),
+                                        ),
+                                        hintStyle: TextStyle(
+                                          color: BColors.textSecondary(
+                                            context,
+                                          ).withOpacity(0.5),
+                                        ),
+                                        prefixIcon: Icon(
+                                          Icons.search,
+                                          color: BColors.primary(context),
+                                        ),
+                                        suffixIcon: IconButton(
+                                          icon: _isScanning
+                                              ? SizedBox(
+                                                  width: 20,
+                                                  height: 20,
+                                                  child:
+                                                      CircularProgressIndicator(
+                                                        strokeWidth: 2,
+                                                        color: BColors.primary(
+                                                          context,
+                                                        ),
+                                                      ),
+                                                )
+                                              : Icon(
+                                                  Icons.camera_alt_outlined,
+                                                  color: BColors.textPrimary(
+                                                    context,
+                                                  ),
+                                                ),
+                                          onPressed: _isScanning
+                                              ? null
+                                              : () async {
+                                                  // Lógica de escaneo con IA
+                                                  final scannedName =
+                                                      await _scanWithAI();
+                                                  if (scannedName != null) {
+                                                    textEditingController.text =
+                                                        scannedName;
+                                                    // Trigger search manually if needed or let user review
+                                                  }
+                                                },
+                                        ),
+                                        filled: true,
+                                        fillColor: BColors.surfaceVariant(
+                                          context,
+                                        ),
+                                        border: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                          borderSide: BorderSide.none,
+                                        ),
+                                      ),
+                                    );
+                                  },
+                              optionsViewBuilder: (context, onSelected, options) {
+                                return Align(
+                                  alignment: Alignment.topLeft,
+                                  child: Material(
+                                    elevation: 4.0,
+                                    color: BColors.surface(context),
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: ConstrainedBox(
+                                      constraints: BoxConstraints(
+                                        maxHeight: 250,
+                                        maxWidth: constraints.maxWidth,
+                                      ),
+                                      child: ListView.builder(
+                                        padding: EdgeInsets.zero,
+                                        shrinkWrap: true,
+                                        itemCount: options.length,
+                                        itemBuilder: (BuildContext context, int index) {
+                                          final option = options.elementAt(
+                                            index,
+                                          );
+                                          return ListTile(
+                                            leading: option['image_url'] != null
+                                                ? Image.network(
+                                                    option['image_url'],
+                                                    width: 30,
+                                                    height: 30,
+                                                    errorBuilder:
+                                                        (
+                                                          _,
+                                                          __,
+                                                          ___,
+                                                        ) => const Icon(
+                                                          Icons
+                                                              .image_not_supported,
+                                                        ),
+                                                  )
+                                                : const Icon(
+                                                    Icons.inventory_2_outlined,
+                                                  ),
+                                            title: Text(
+                                              option['name'],
+                                              style: TextStyle(
+                                                color: BColors.textPrimary(
+                                                  context,
+                                                ),
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                            subtitle: Text(
+                                              "${option['category'] ?? ''} - ${option['subcategory'] ?? ''}",
+                                              style: TextStyle(
+                                                color: BColors.textSecondary(
+                                                  context,
+                                                ),
+                                                fontSize: 12,
+                                              ),
+                                            ),
+                                            onTap: () => onSelected(option),
+                                          );
+                                        },
+                                      ),
                                     ),
                                   ),
-                                )
-                                .toList(),
-                            onChanged: (val) {
-                              setState(() {
-                                _selectedCategory = val;
-                                _updateDefaults();
-                              });
-                            },
-                            dropdownColor: BColors.surface(context),
-                            decoration: InputDecoration(
-                              labelText: "Categoría",
-                              labelStyle: TextStyle(
-                                color: BColors.textSecondary(context),
-                              ),
-                              border: InputBorder.none,
-                              contentPadding: EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 16,
-                              ),
-                            ),
-                            style: TextStyle(
-                              color: BColors.textPrimary(context),
-                            ),
-                            iconEnabledColor: BColors.primary(context),
+                                );
+                              },
+                            );
+                          },
+                        ),
+                      ),
+
+                      // --- SECCIONES CONDICIONALES ---
+                      if (_selectedMasterId == null) ...[
+                        // Dropdown de categoría
+                        Container(
+                          decoration: BoxDecoration(
+                            color: BColors.surfaceVariant(context),
                             borderRadius: BorderRadius.circular(16),
                           ),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-
-                      // Lógica de Nombre Automático vs Manual
-                      if (_selectedCategory == 'Otros') ...[
-                        _buildTextField(
-                          controller: _nameCtrl,
-                          label: "Nombre del Producto",
-                          validator: (v) =>
-                              v!.isEmpty ? "Campo obligatorio" : null,
+                          child: ButtonTheme(
+                            alignedDropdown: true,
+                            child: DropdownButtonFormField<CategoryModel>(
+                              value: _selectedCategory,
+                              items: _categories
+                                  .map(
+                                    (c) => DropdownMenuItem(
+                                      value: c,
+                                      child: Text(
+                                        c.name,
+                                        style: TextStyle(
+                                          color: BColors.textPrimary(context),
+                                        ),
+                                      ),
+                                    ),
+                                  )
+                                  .toList(),
+                              onChanged: (val) {
+                                setState(() {
+                                  _selectedCategory = val;
+                                  _updateDefaults();
+                                });
+                              },
+                              dropdownColor: BColors.surface(context),
+                              decoration: InputDecoration(
+                                labelText: "Categoría",
+                                labelStyle: TextStyle(
+                                  color: BColors.textSecondary(context),
+                                ),
+                                border: InputBorder.none,
+                                contentPadding: EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 16,
+                                ),
+                              ),
+                              style: TextStyle(
+                                color: BColors.textPrimary(context),
+                              ),
+                              iconEnabledColor: BColors.primary(context),
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                          ),
                         ),
                         const SizedBox(height: 24),
-                      ] else ...[
-                        // Para categorías estructuradas, sin campo de nombre
-                        const SizedBox(height: 0),
-                      ],
 
-                      // Sección de detalles específicos
-                      Row(
-                        children: [
-                          Container(
-                            width: 4,
-                            height: 24,
-                            decoration: BoxDecoration(
-                              color: BColors.primary(context),
-                              borderRadius: BorderRadius.circular(2),
-                            ),
+                        // Lógica de Nombre Automático vs Manual
+                        if (_selectedCategory?.name == 'Otros') ...[
+                          _buildTextField(
+                            controller: _nameCtrl,
+                            label: "Nombre del Producto",
+                            validator: (v) =>
+                                v!.isEmpty ? "Campo obligatorio" : null,
                           ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              "Detalles de ${_selectedCategory?.name ?? 'Categoría'}",
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                color: BColors.primary(context),
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
+                          const SizedBox(height: 24),
                         ],
-                      ),
-                      const SizedBox(height: 16),
 
-                      Container(
-                        padding: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(
-                          color: BColors.surface(context),
-                          borderRadius: BorderRadius.circular(20),
-                          boxShadow: [
-                            BoxShadow(
-                              color: BColors.shadowLight(context),
-                              blurRadius: 16,
-                              offset: Offset(0, 4),
+                        // Sección de detalles específicos
+                        Row(
+                          children: [
+                            Container(
+                              width: 4,
+                              height: 24,
+                              decoration: BoxDecoration(
+                                color: BColors.primary(context),
+                                borderRadius: BorderRadius.circular(2),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                "Detalles de ${_selectedCategory?.name ?? 'Categoría'}",
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  color: BColors.primary(context),
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
                           ],
-                          border: Border.all(
-                            color: BColors.border(context),
-                            width: 0.5,
+                        ),
+                        const SizedBox(height: 16),
+
+                        Container(
+                          padding: const EdgeInsets.all(20),
+                          decoration: BoxDecoration(
+                            color: BColors.surface(context),
+                            borderRadius: BorderRadius.circular(20),
+                            boxShadow: [
+                              BoxShadow(
+                                color: BColors.shadowLight(context),
+                                blurRadius: 16,
+                                offset: Offset(0, 4),
+                              ),
+                            ],
+                            border: Border.all(
+                              color: BColors.border(context),
+                              width: 0.5,
+                            ),
+                          ),
+                          child: _buildDynamicFields(),
+                        ),
+                      ] else ...[
+                        // MODO EDICIÓN RÁPIDA (Master seleccionado)
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(16),
+                          margin: const EdgeInsets.only(bottom: 24),
+                          decoration: BoxDecoration(
+                            color: BColors.primary(context).withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: BColors.primary(context).withOpacity(0.5),
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(
+                                    Icons.check_circle,
+                                    color: BColors.primary(context),
+                                    size: 20,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    "Producto Base Seleccionado",
+                                    style: TextStyle(
+                                      color: BColors.primary(context),
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+                              Text(
+                                _computedName,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              Divider(color: Colors.white12),
+                              const SizedBox(height: 8),
+                              Text(
+                                "Categoría: ${_selectedCategory?.name ?? '...'}",
+                                style: TextStyle(color: Colors.white70),
+                              ),
+                              if (_brandCtrl.text.isNotEmpty)
+                                Text(
+                                  "Marca: ${_brandCtrl.text}",
+                                  style: TextStyle(color: Colors.white70),
+                                ),
+                              if (_selectedSubCategory != null)
+                                Text(
+                                  "Tipo: ${_selectedSubCategory?.name}",
+                                  style: TextStyle(color: Colors.white70),
+                                ),
+                            ],
                           ),
                         ),
-                        child: _buildDynamicFields(),
-                      ),
+                      ],
 
                       const SizedBox(height: 24),
 
@@ -1384,5 +1578,32 @@ class _AddProductScreenState extends State<AddProductScreen> {
         ],
       ),
     );
+  }
+
+  bool _shouldShowFlavor() {
+    if (_selectedCategory?.name == 'Bebidas') {
+      // Mostrar para Jugos, Rehidratantes, Licores, Yogurt, Gaseosa
+      final sub = _selectedSubCategory?.name ?? "";
+      if (sub == 'Agua' || sub == 'Cerveza') return false;
+      return true;
+    }
+    if (_selectedCategory?.name == 'Abarrotes') {
+      final sub = _selectedSubCategory?.name ?? "";
+      if (sub.contains('Yogurt') ||
+          sub.contains('Golosina') ||
+          sub.contains('Snack'))
+        return true;
+    }
+    return false;
+  }
+
+  bool _shouldShowSugarFree() {
+    final sub = _selectedSubCategory?.name ?? "";
+    return sub == 'Gaseosa' || sub == 'Energizante' || sub.contains('Jugo');
+  }
+
+  bool _shouldShowLactoseFree() {
+    final sub = _selectedSubCategory?.name ?? "";
+    return sub.contains('Leche') || sub.contains('Yogurt');
   }
 }

@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, extract
 from datetime import datetime, timedelta
@@ -107,8 +108,48 @@ def toggle_stock(user_id: str, update: StockUpdate, db: Session = Depends(get_db
 
 # ...
 
+@router.get("/master-products/search")
+def search_master_products(
+    q: str, 
+    db: Session = Depends(get_db)
+):
+    """
+    Busca productos en el catálogo maestro por nombre.
+    Retorna resultados limitados para autocompletado.
+    """
+    if not q or len(q) < 2:
+        return []
+    
+    # Búsqueda case-insensitive
+    results = db.query(MasterProduct).filter(
+        MasterProduct.name.ilike(f"%{q}%")
+    ).limit(10).all()
+    
+    output = []
+    for p in results:
+        # Recuperar nombres de cat/subcat si existen relaciones
+        cat_name = p.category
+        if p.category_obj:
+            cat_name = p.category_obj.name
+            
+        sub_name = None
+        if p.subcategory_obj:
+            sub_name = p.subcategory_obj.name
+
+        output.append({
+            "id": p.id,
+            "name": p.name,
+            "category": cat_name,
+            "subcategory": sub_name,
+            "image_url": p.image_url,
+            "default_unit": p.default_unit,
+            "attributes": p.attributes
+        })
+        
+    return output
+
 @router.post("/add-product")
-def add_custom_product(
+async def add_custom_product(
     user_id: str, 
     product_data: ProductCreateRequest, 
     db: Session = Depends(get_db)
@@ -135,40 +176,63 @@ def add_custom_product(
         db.add(category_obj)
         db.flush()
 
-    # 2. Verificar si el MasterProduct ya existe (por Nombre y Categoría ID)
-    existing_master = db.query(MasterProduct).filter(
-        MasterProduct.name == product_data.name,
-        MasterProduct.category_id == category_obj.id 
-    ).first()
+    # 2. Gestionar Master Product
+    master_id = product_data.master_product_id
+    master_p = None
 
-    master_id = None
-
-    if existing_master:
-        # ... (Lógica de duplicado en inventario igual)
-        existing_inv = db.query(StoreInventory).filter(
-            StoreInventory.bodega_id == bodega.id,
-            StoreInventory.product_id == existing_master.id
+    if master_id:
+        # Caso A: Seleccionó uno existente
+        master_p = db.query(MasterProduct).filter(MasterProduct.id == master_id).first()
+        if not master_p:
+            raise HTTPException(status_code=404, detail="Producto maestro no encontrado")
+    else:
+        # Caso B: Producto Nuevo (Validar con IA)
+        # 2.1. Verificar duplicado exacto por nombre primero
+        existing_master = db.query(MasterProduct).filter(
+            MasterProduct.name == product_data.name
         ).first()
 
-        if existing_inv:
-            raise HTTPException(
-                status_code=409, 
-                detail=f"El producto '{product_data.name}' ya está en tu inventario."
+        if existing_master:
+            master_p = existing_master
+            master_id = existing_master.id
+        else:
+            # 2.2. Validación IA
+            validation = await gemini_client.validate_product_name(product_data.name)
+            if not validation.get("is_valid", True):
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"Nombre rechazado por seguridad: {validation.get('reason')}"
+                )
+
+            # 2.3. Crear nuevo MasterProduct
+            new_master = MasterProduct(
+                name=product_data.name,
+                category=category_obj.name,
+                category_id=category_obj.id,
+                subcategory_id=product_data.subcategory_id,
+                attributes=product_data.attributes,
+                default_unit="un" # Default simple
             )
-        master_id = existing_master.id
-    else:
-        # No existe, lo creamos vinculado a la categoría
-        new_master = MasterProduct(
-            name=product_data.name,
-            category=cat_name, 
-            category_id=category_obj.id,
-            subcategory_id=product_data.subcategory_id, # NUEVO: Guardar subcategoría
-            attributes=product_data.attributes, 
-            default_unit="UND"
+            db.add(new_master)
+            db.flush() # Para obtener ID
+            master_p = new_master
+            master_id = new_master.id
+
+    # 3. Vincular a Inventario (Upsert)
+    existing_inv = db.query(StoreInventory).filter(
+        StoreInventory.bodega_id == bodega.id,
+        StoreInventory.product_id == master_id
+    ).first()
+
+    if existing_inv:
+        return JSONResponse(
+            status_code=409, 
+            content={
+                "detail": f"El producto '{product_data.name}' ya está en tu inventario.",
+                "product_id": master_id
+            }
         )
-        db.add(new_master)
-        db.flush()
-        master_id = new_master.id
+
 
     # 3. Agregarlo al inventario de la bodega
     new_inventory = StoreInventory(
@@ -773,33 +837,54 @@ async def scan_magic_product(
     """
     Escanea un producto con IA, extrae datos y busca coincidencias en el catálogo maestro.
     """
-    # 1. Leer contenido del archivo
-    content = await file.read()
-    
-    # 2. Analizar con Gemini
-    ai_data = await gemini_client.analyze_product_image(
-        image_bytes=content,
-        mime_type=file.content_type or "image/jpeg"
-    )
-    
-    # 3. Buscar coincidencia en MasterProduct
-    found_master_id = None
-    suggested_name = ai_data.get("suggested_name")
-    
-    if suggested_name:
-        # Búsqueda por similitud de nombre (case insensitive)
-        # Buscamos si el nombre sugerido se parece a alguno existente
-        match = db.query(MasterProduct).filter(
-            MasterProduct.name.ilike(f"%{suggested_name}%")
-        ).first()
+    try:
+        # 1. Leer contenido del archivo
+        content = await file.read()
         
-        if match:
-            found_master_id = match.id
+        # 2. Obtener TAXONOMÍA REAL de la base de datos
+        categories = db.query(Category).options(joinedload(Category.subcategories)).all()
+        
+        # Construir string dinámico para el prompt
+        taxonomy_lines = []
+        for cat in categories:
+            sub_names = [s.name for s in cat.subcategories]
+            # Formato: - CATEGORIA: [Sub1, Sub2, Sub3]
+            taxonomy_lines.append(f"- {cat.name.upper()}: [{', '.join(sub_names)}]")
+        
+        taxonomy_str = "\n".join(taxonomy_lines)
+        
+        # 3. Analizar con Gemini (con taxonomía inyectada)
+        ai_data = await gemini_client.analyze_product_image(
+            image_bytes=content,
+            mime_type=file.content_type or "image/jpeg",
+            taxonomy=taxonomy_str 
+        )
+        
+        # 4. Buscar coincidencia en MasterProduct
+        found_master_id = None
+        suggested_name = ai_data.get("suggested_name")
+        
+        if suggested_name:
+            # Búsqueda por similitud de nombre (case insensitive)
+            match = db.query(MasterProduct).filter(
+                MasterProduct.name.ilike(f"%{suggested_name}%")
+            ).first()
             
-    return {
-        "found_master_id": found_master_id,
-        "ai_data": ai_data
-    }
+            if match:
+                found_master_id = match.id
+                
+        return {
+            "found_master_id": found_master_id,
+            "ai_data": ai_data
+        }
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        print(f"❌ Error en scan-magic: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"detail": f"Error interno: {str(e)}"}
+        )
 
 @router.post("/scan-bulk")
 async def scan_bulk_products(

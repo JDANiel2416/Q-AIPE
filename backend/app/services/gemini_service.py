@@ -57,6 +57,57 @@ class GeminiService:
         print("❌ [GEMINI] Se agotaron las cuotas de TODOS los modelos disponibles.")
         raise Exception("Servicio Gemini no disponible temporalmente (Cuota agotada).")
 
+    async def validate_product_name(self, product_name: str) -> dict:
+        """
+        Valida si el nombre del producto es apropiado y comercializable.
+        Retorna: { "is_valid": bool, "reason": str }
+        """
+        prompt = f"""
+        Rol: Eres un moderador de contenido experto en jerga peruana y albur (doble sentido) para una app de bodegas.
+        Tarea: Validar si "{product_name}" es un nombre de producto COMERCIALMENTE VÁLIDO y SEGURO.
+
+        CRITERIOS DE RECHAZO estricto (is_valid = false):
+        1. Obscenidades explícitas o IMPLÍCITAS.
+           - Juegos de palabras fonéticos: "No MeJo Das" (No me jodas), "Elver Galarga", "Lustra Sable", "Kchero", "Rosa Melano".
+           - Leet Speak / Sustituciones: "G4mp1" (Gampi), "P3n3", "C4c4", "Put0".
+        2. Jerga peruana soez o vulgar.
+        3. Contenido sexual, violento o discriminatorio.
+        4. Gibberish (texto sin sentido) o Spam.
+        5. Nombres que NO son palabras (Solo números o símbolos, ej: "123456", "!!!", "@@@").
+        6. Nombres genéricos inútiles ("producto", "cosa").
+        
+        CRITERIOS DE ACEPTACIÓN (is_valid = true):
+        1. Nombres de productos reales (ej: "Gaseosa Coca Cola", "Leche de Tigre", "Rompe Pecho").
+           - Contexto: Es una bodega. "Leche", "Huevos", "Pechuga" son válidos.
+           - Números con contexto ESTÁN BIEN (ej: "7 Up", "Coca Cola Zero").
+        2. Errores ortográficos menores son ACEPTABLES.
+
+        SI DETECTAS DOBLE SENTIDO, LEET SPEAK VULGAR, O FONÉTICA VULGAR -> RECHAZA.
+
+        Responde SOLO JSON:
+        {{
+            "is_valid": true/false,
+            "reason": "Explicación breve si es false (indica el albur/código detectado), o null si es true"
+        }}
+        """
+
+        def _call():
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    temperature=0.1
+                )
+            )
+            return json.loads(response.text)
+
+        try:
+            return await self._execute_with_retry(_call)
+        except Exception as e:
+            print(f"Error validando producto: {e}")
+            return {"is_valid": True, "reason": None}
+
     async def classify_intent(self, user_query: str) -> dict:
         """
         Clasifica la intención del usuario.
@@ -402,13 +453,30 @@ class GeminiService:
             print(f"Error audio: {e}")
             return {"error": "Error procesando audio"}
 
-    async def analyze_product_image(self, image_bytes: bytes, mime_type: str = "image/jpeg") -> dict:
+    async def analyze_product_image(self, image_bytes: bytes, mime_type: str = "image/jpeg", taxonomy: str = None) -> dict:
         """
         Analiza imagen de producto para extraer datos estructurados.
         Usa gemini-2.0-flash como solicitado.
         Incluye validación de seguridad y relevancia.
         """
-        prompt = """
+        
+        taxonomy_section = ""
+        if taxonomy:
+            taxonomy_section = f"""
+            TAXONOMÍA VÁLIDA (Usa EXACTAMENTE estas opciones):
+            {taxonomy}
+            """
+        else:
+            # Fallback (updated with Golosinas just in case)
+            taxonomy_section = """
+            TAXONOMÍA VÁLIDA (Usa EXACTAMENTE estas opciones):
+            - BEBIDAS: [Gaseosa, Agua, Cerveza, Energizante, Rehidratante, Jugo, Licor]
+            - ABARROTES: [Arroz, Azúcar, Aceite, Fideos, Menestra, Conserva, Lácteos, Snack, Galleta, Condimento, Golosinas]
+            - LIMPIEZA: [Detergente, Jabón, Lejía, Suavizante, Lavavajilla, Papel, Pañal, Toalla]
+            - OTROS: [General]
+            """
+
+        prompt = f"""
         Actúa como un identificador experto de productos de bodega.
         Analiza esta imagen siguiendo estrictamente estos pasos:
 
@@ -421,11 +489,7 @@ class GeminiService:
         - RECHAZA objetos sueltos personales irrelevantes (llaves, billetera, zapatos usados, mascotas, documentos, etc.).
         - Si la imagen es borrosa, oscura o no se distingue un producto -> RECHAZA.
 
-        TAXONOMÍA VÁLIDA (Usa EXACTAMENTE estas opciones):
-        - BEBIDAS: [Gaseosa, Agua, Cerveza, Energizante, Rehidratante, Jugo, Licor]
-        - ABARROTES: [Arroz, Azúcar, Aceite, Fideos, Menestra, Conserva, Lácteos, Snack, Galleta, Condimento]
-        - LIMPIEZA: [Detergente, Jabón, Lejía, Suavizante, Lavavajilla, Papel, Pañal, Toalla]
-        - OTROS: [General]
+        {taxonomy_section}
 
         PASO 3: EXTRACCIÓN DE DATOS (Solo si pasó Paso 1 y 2)
         - is_valid: true
@@ -437,7 +501,7 @@ class GeminiService:
         - "is_alcoholic": boolean.
 
         ESTRUCTURA DE RESPUESTA JSON (Obligatoria):
-        {
+        {{
           "is_valid": boolean,
           "reason": string | null,
           "suggested_name": string | null,
@@ -445,8 +509,14 @@ class GeminiService:
           "category": string | null,
           "subcategory": string | null,
           "volume": string | null,
-          "is_alcoholic": boolean
-        }
+          "is_alcoholic": boolean,
+          "attributes": {{
+              "has_gas": boolean | null,
+              "sugar_free": boolean | null,
+              "lactose_free": boolean | null,
+              "flavor": string | null
+          }}
+        }}
         """
         
         try:
@@ -502,7 +572,8 @@ class GeminiService:
                 "category": result.get("category"),
                 "subcategory": result.get("subcategory"),
                 "volume": result.get("volume"),
-                "is_alcoholic": result.get("is_alcoholic", False)
+                "is_alcoholic": result.get("is_alcoholic", False),
+                "attributes": result.get("attributes", {})
             }
 
         except Exception as e:
@@ -516,6 +587,7 @@ class GeminiService:
                 "subcategory": None,
                 "volume": None,
                 "is_alcoholic": False,
+                "attributes": {},
                 "error": str(e)
             }
 

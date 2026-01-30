@@ -2,7 +2,8 @@
 class ProductCreateRequest {
   final String name;
   final String category;
-  final int? subCategoryId; // NUEVO
+  final int? subCategoryId;
+  final int? masterProductId; // NUEVO
   final double price;
   final int stock;
   final Map<String, dynamic> attributes;
@@ -11,6 +12,7 @@ class ProductCreateRequest {
     required this.name,
     required this.category,
     this.subCategoryId,
+    this.masterProductId,
     required this.price,
     required this.stock,
     required this.attributes,
@@ -18,12 +20,13 @@ class ProductCreateRequest {
 
   Map<String, dynamic> toJson() {
     return {
-      'name': name,
-      'category': category,
-      'subcategory_id': subCategoryId,
-      'price': price,
-      'stock': stock,
-      'attributes': attributes,
+      "name": name,
+      "category": category,
+      "subcategory_id": subCategoryId,
+      "master_product_id": masterProductId,
+      "price": price,
+      "stock": stock,
+      "attributes": attributes,
     };
   }
 }

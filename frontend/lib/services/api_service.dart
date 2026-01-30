@@ -40,7 +40,12 @@ class ApiService {
       if (response.statusCode == 200) {
         return {"success": true, "message": "Producto agregado correctamente"};
       } else if (response.statusCode == 409) {
-        return {"success": false, "status": 409, "message": data['detail']};
+        return {
+          "success": false,
+          "status": 409,
+          "message": data['detail'],
+          "product_id": data['product_id'],
+        };
       } else {
         return {
           "success": false,
@@ -50,6 +55,22 @@ class ApiService {
     } catch (e) {
       print("Error de conexión: $e");
       return {"success": false, "message": "Error de conexión: $e"};
+    }
+  }
+
+  // Bodeguero: Buscar productos en master (Autocomplete)
+  Future<List<Map<String, dynamic>>> searchMasterProducts(String query) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/bodeguero/master-products/search?q=$query'),
+      headers: {"Content-Type": "application/json; charset=utf-8"},
+    );
+
+    if (response.statusCode == 200) {
+      // Decode with UTF8
+      final List<dynamic> list = json.decode(utf8.decode(response.bodyBytes));
+      return List<Map<String, dynamic>>.from(list);
+    } else {
+      return [];
     }
   }
 

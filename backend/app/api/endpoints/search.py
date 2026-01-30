@@ -320,6 +320,18 @@ async def search_smart(request: SearchRequest, db: Session = Depends(get_db)):
         )
 
     # --- 2. CLASIFICACIÓN DE INTENCIÓN ---
+    
+    # 1. Clasificar con Gemini
+    classification_result = await gemini_client.classify_intent(request.query)
+    
+    intent_type = classification_result.get("intent", "UNKNOWN")
+    requires_search = classification_result.get("requires_search", False)
+    requires_state = classification_result.get("requires_state", False)
+    clear_state = classification_result.get("clear_state", False)
+    is_inappropriate = classification_result.get("is_inappropriate", False)
+
+    print(f"🧠 [INTENT] Tipo: {intent_type} | ReqSearch: {requires_search} | ReqState: {requires_state}")
+
     # CASO 0: Contenido inapropiado - Rechazar sin llamar a Gemini (ahorra API)
     if intent_type == "INAPPROPRIATE" or is_inappropriate:
         # Mensaje fijo para no gastar API
