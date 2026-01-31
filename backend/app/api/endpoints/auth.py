@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.services.reniec_service import ReniecService
 from app.models.tables import User
-from app.core.security import verify_password, get_password_hash, encrypt_value, get_search_hash
+from app.core.security import verify_password, get_password_hash, encrypt_value, decrypt_value, get_search_hash
 from pydantic import BaseModel
 
 router = APIRouter()
@@ -35,7 +35,7 @@ async def consult_dni(req: ConsultRequest, db: Session = Depends(get_db)):
     existing_user = db.query(User).filter(User.dni == req.dni).first()
     
     if existing_user:
-        masked = ReniecService.obfuscate_name(existing_user.full_name) # Usar nuevo formato estricto después
+        masked = ReniecService.obfuscate_name(decrypt_value(existing_user.full_name))  # 🔓 Desencriptar primero
         return {
             "success": True,
             "masked_name": masked,
@@ -123,8 +123,14 @@ def login(req: LoginRequest, db: Session = Depends(get_db)):
     # 2. Verificar password con Bcrypt
     if not verify_password(req.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Contraseña incorrecta")
-        
-    return {"success": True, "user_id": str(user.id), "name": user.full_name, "role": user.role}
+
+    # Import directo para evitar error circular si no está arriba
+    from app.core.security import decrypt_value
+    
+    # 🔓 Desencriptar nombre para el frontend
+    decrypted_name = decrypt_value(user.full_name)
+
+    return {"success": True, "user_id": str(user.id), "name": decrypted_name, "role": user.role}
 
 
 class RegisterFCMTokenRequest(BaseModel):
@@ -139,7 +145,7 @@ def register_fcm_token(req: RegisterFCMTokenRequest, db: Session = Depends(get_d
     if not user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
     
-    user.fcm_token = encrypt_value(req.fcm_token)
+    user.fcm_token = req.fcm_token  # No encriptar - necesario en texto plano para OneSignal
     db.commit()
     
     print(f"✅ FCM Token registrado para usuario {user.full_name}: {req.fcm_token[:30]}...")
@@ -216,11 +222,13 @@ async def register(req: RegisterRequest, db: Session = Depends(get_db)): # <--- 
 
     new_user = User(
         dni=req.dni,
-        full_name=real_name,
+        full_name=encrypt_value(real_name), # 🔐 ENCRIPTADO
         # SECURIZAR DATOS:
         password_hash=get_password_hash(req.password),
         phone_number=encrypt_value(req.phone),      # Guardar encriptado
         phone_hash=get_search_hash(req.phone),      # Guardar hash para buscar
+        # Para búsquedas de nombre, si se requiere en futuro:
+        # name_hash=get_search_hash(real_name),
         role=req.role,
         is_verified=True
     )
@@ -245,40 +253,5 @@ async def register(req: RegisterRequest, db: Session = Depends(get_db)): # <--- 
     return {
         "success": True, 
         "user_id": str(new_user.id),
-        "role": new_user.role  # <--- ¡ESTO FALTABA!
+        "role": new_user.role 
     }
-
-    if db.query(User).filter(User.dni == req.dni).first():
-        raise HTTPException(status_code=400, detail="El DNI ya está registrado")
-
-    # Si recibimos datos de reniec antes, podrías pasarlos aquí, 
-    # pero por ahora usaremos "Usuario DNI" si no se envía el nombre.
-    # (Para mejorarlo, deberíamos pedir el nombre en el frontend si Reniec falla)
-    
-    new_user = User(
-        dni=req.dni,
-        full_name=f"Usuario {req.dni}", 
-        password_hash=req.password,
-        phone_number=req.phone,
-        role=req.role,
-        is_verified=True
-    )
-    db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
-
-    # Lógica de Bodeguero (Opcional, la que tenías antes)
-    if req.role == "BODEGUERO" and req.bodega_name:
-         from app.models.tables import Bodega # Import local para evitar ciclos
-         new_bodega = Bodega(
-            owner_id=new_user.id,
-            name=req.bodega_name,
-            latitude=req.latitude,
-            longitude=req.longitude,
-            manual_override="OPEN",
-            rating=5.0
-        )
-         db.add(new_bodega)
-         db.commit()
-
-    return {"success": True, "user_id": str(new_user.id)}

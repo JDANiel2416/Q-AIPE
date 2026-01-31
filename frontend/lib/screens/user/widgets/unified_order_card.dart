@@ -6,12 +6,16 @@ class UnifiedOrderCard extends StatelessWidget {
   final List<BodegaSearchResult> results;
   final VoidCallback onConfirmAll;
   final Function(BodegaSearchResult) onChangeSelection; // Opción a futuro
+  final bool isReserved;
+  final VoidCallback onViewTicket;
 
   const UnifiedOrderCard({
     Key? key,
     required this.results,
     required this.onConfirmAll,
     required this.onChangeSelection,
+    this.isReserved = false,
+    required this.onViewTicket,
   }) : super(key: key);
 
   @override
@@ -19,8 +23,75 @@ class UnifiedOrderCard extends StatelessWidget {
     // Calculamos total global
     double grandTotal = 0;
     for (var r in results) {
-      grandTotal += r.totalPrice; // Usar campo snake_case convertido?
-      // model uses total_price from JSON, but likely mapped to totalPrice in Dart (check model)
+      grandTotal += r.totalPrice;
+    }
+
+    // SI ESTÁ RESERVADO: Mostrar tarjeta simplificada "Ver Ticket"
+    if (isReserved) {
+      return Container(
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: HomeColors.surface(context),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: HomeColors.primary(context), width: 1.5),
+          boxShadow: [
+            BoxShadow(
+              color: HomeColors.shadowLight(context),
+              blurRadius: 8,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Column(
+          children: [
+            Icon(
+              Icons.check_circle,
+              color: HomeColors.primary(context),
+              size: 40,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              "Pedido Confirmado",
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: HomeColors.textPrimary(context),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              "Tu pedido unificado está listo.",
+              style: TextStyle(color: HomeColors.textSecondary(context)),
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: onViewTicket,
+                icon: const Icon(
+                  Icons.confirmation_number,
+                  color: Colors.white,
+                ),
+                label: const Text(
+                  "Ver Ticket Unificado",
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: HomeColors.primary(context),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
     }
 
     return Container(

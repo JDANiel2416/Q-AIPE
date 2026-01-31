@@ -31,8 +31,9 @@ def get_password_hash(password: str) -> str:
 # Si falla, genera una nueva para evitar crash (pero ojo: los datos previos no se podrán leer)
 try:
     _fernet = Fernet(settings.ENCRYPTION_KEY)
+    print(f"SECURITY: Key loaded successfully (starts with {settings.ENCRYPTION_KEY[:5]}...)")
 except Exception as e:
-    print(f"⚠️ Error cargando ENCRYPTION_KEY: {e}. Generando una temporal insegura.")
+    print(f"SECURITY ERROR: Error cargando ENCRYPTION_KEY: {e}. Generando una temporal insegura.")
     _fernet = Fernet(Fernet.generate_key())
 
 def encrypt_value(value: str) -> str:
@@ -47,8 +48,10 @@ def decrypt_value(token: str) -> str:
         return None
     try:
         return _fernet.decrypt(token.encode()).decode()
-    except Exception:
-        return "[Error desencriptando]"
+    except Exception as e:
+        # Si falla (ej. datos antiguos no encriptados), devolver el valor original
+        print(f"SECURITY DEBUG: Decryption failed for token '{token[:10]}...' | Error: {e}")
+        return token
 
 # 3. Deterministic Hashing for Search (SHA-256)
 def get_search_hash(value: str) -> str:
@@ -59,3 +62,24 @@ def get_search_hash(value: str) -> str:
     if not value:
         return None
     return hashlib.sha256(value.encode()).hexdigest()
+
+# 4. Name Privacy Helper
+def format_public_name(full_name: str) -> str:
+    """
+    Formatea un nombre para mostrar a OTROS usuarios (privacidad).
+    Ejemplo: "MICHAEL CARDENAS TORRES" -> "Michael C."
+    
+    El usuario solo ve su propio nombre completo en su perfil.
+    Los demás ven solo el primer nombre + inicial del apellido.
+    """
+    if not full_name:
+        return "Usuario"
+    
+    parts = full_name.strip().split()
+    if len(parts) >= 2:
+        # Primer nombre + inicial del segundo token (apellido)
+        return f"{parts[0].title()} {parts[1][0].upper()}."
+    elif len(parts) == 1:
+        return parts[0].title()
+    else:
+        return "Usuario"

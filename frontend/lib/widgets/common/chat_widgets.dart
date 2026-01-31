@@ -65,31 +65,74 @@ class StaggeredItem extends StatefulWidget {
   State<StaggeredItem> createState() => _StaggeredItemState();
 }
 
-class _StaggeredItemState extends State<StaggeredItem> {
-  bool _visible = false;
+class _StaggeredItemState extends State<StaggeredItem>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _opacityAnimation;
+  late Animation<Offset> _slideAnimation;
+  late Animation<double> _sizeAnimation;
+  bool _isVisible = false;
+  Timer? _timer;
 
   @override
   void initState() {
     super.initState();
-    // Delay escalonado: 150ms * index
-    Future.delayed(Duration(milliseconds: 150 * widget.index), () {
+
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 800), // Velocidad estándar fluida
+      vsync: this,
+    );
+
+    _sizeAnimation = CurvedAnimation(
+      parent: _controller,
+      curve: const Interval(0.0, 1.0, curve: Curves.easeOut),
+    );
+
+    _opacityAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: const Interval(0.0, 0.5, curve: Curves.easeOut),
+      ),
+    );
+
+    _slideAnimation =
+        Tween<Offset>(begin: const Offset(0, 0.3), end: Offset.zero).animate(
+          CurvedAnimation(
+            parent: _controller,
+            curve: const Interval(0.2, 1.0, curve: Curves.easeOutCubic),
+          ),
+        );
+
+    // Delay escalonado: 400ms * index
+    _timer = Timer(Duration(milliseconds: 400 * widget.index), () {
       if (mounted) {
-        setState(() => _visible = true);
+        setState(() {
+          _isVisible = true;
+        });
+        _controller.forward();
       }
     });
   }
 
   @override
+  void dispose() {
+    _timer?.cancel();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return AnimatedOpacity(
-      opacity: _visible ? 1.0 : 0.0,
-      duration: const Duration(milliseconds: 400),
-      curve: Curves.easeOut,
-      child: AnimatedSlide(
-        offset: _visible ? Offset.zero : const Offset(0, 0.2),
-        duration: const Duration(milliseconds: 400),
-        curve: Curves.easeOut,
-        child: widget.child,
+    if (!_isVisible) {
+      return const SizedBox.shrink(); // No ocupa espacio hasta que sea su turno
+    }
+
+    return SizeTransition(
+      sizeFactor: _sizeAnimation,
+      axisAlignment: -1.0, // Crecer desde arriba hacia abajo (revelando)
+      child: FadeTransition(
+        opacity: _opacityAnimation,
+        child: SlideTransition(position: _slideAnimation, child: widget.child),
       ),
     );
   }

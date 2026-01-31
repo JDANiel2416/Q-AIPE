@@ -212,6 +212,8 @@ class _OrdersHistoryScreenState extends State<OrdersHistoryScreen>
                 MaterialPageRoute(
                   builder: (context) => TicketScreen(
                     ticketData: {
+                      'id': order['id'], // <--- ID del pedido
+                      'status': order['status'], // <--- Estado del pedido
                       'items': items,
                       'total': order['total_amount'],
                       'qr_data': order['qr_data'] ?? '',

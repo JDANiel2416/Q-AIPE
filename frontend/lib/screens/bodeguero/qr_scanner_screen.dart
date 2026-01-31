@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:convert';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import '../../services/api_service.dart';
 import 'bodeguero_colors.dart';
@@ -24,17 +25,94 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
   }
 
   void _onDetect(BarcodeCapture capture) async {
-    if (_isProcessing) return; // Evitar múltiples escaneos
+    print("DEBUG QR: _onDetect called, _isProcessing=$_isProcessing");
+    if (_isProcessing) {
+      print("DEBUG QR: Skipped - already processing");
+      return;
+    }
     final List<Barcode> barcodes = capture.barcodes;
+    print("DEBUG QR: Found ${barcodes.length} barcodes");
 
     for (final barcode in barcodes) {
       if (barcode.rawValue != null) {
         final code = barcode.rawValue!;
-        // Validar formato básico localmente si es posible (RES|...)
-        if (code.startsWith("RES|")) {
-          _processQRCode(code);
-          break; // Procesar solo el primero válido
+        print(
+          "DEBUG QR: Raw value = ${code.substring(0, code.length > 50 ? 50 : code.length)}...",
+        );
+
+        // 1. Intentar decodificar como lista JSON (QR Unificado)
+        try {
+          final decoded = jsonDecode(code);
+          if (decoded is List) {
+            print(
+              "DEBUG QR: Detected unified QR with ${decoded.length} tokens",
+            );
+            _processUnifiedQR(decoded.cast<String>());
+            return;
+          }
+        } catch (_) {
+          // No es JSON, continuamos
         }
+
+        // 2. Validar formato legacy (RES|...)
+        if (code.startsWith("RES|")) {
+          print("DEBUG QR: Detected legacy RES| format");
+          _processQRCode(code);
+          break;
+        }
+      }
+    }
+  }
+
+  Future<void> _processUnifiedQR(List<String> tokens) async {
+    setState(() => _isProcessing = true);
+
+    try {
+      bool found = false;
+      String? lastError;
+
+      // Probar cada token hasta encontrar el válido para ESTA bodega
+      for (var token in tokens) {
+        try {
+          final result = await _api.validateReservation(token, widget.bodegaId);
+          if (result['success'] == true) {
+            found = true;
+
+            if (!mounted) return;
+            // Éxito encontrado
+            if (result['already_validated'] == true) {
+              _showResultDialog(
+                success: true,
+                title: "Ticket Ya Usado",
+                message: result['message'],
+                data: result['reservation'],
+                isWarning: true,
+              );
+            } else {
+              _showPaymentOptionsDialog(result['reservation']);
+            }
+            break; // Salir del loop si encontramos el nuestro
+          }
+        } catch (e) {
+          // Este token no era nuestro o error de red, seguimos buscando
+          lastError = e.toString();
+        }
+      }
+
+      if (!found && mounted) {
+        _showResultDialog(
+          success: false,
+          title: "Ticket No Válido",
+          message: "Este QR no contiene pedidos para esta bodega.",
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        _showResultDialog(
+          success: false,
+          title: "Error",
+          message: "Error procesando QR unificado: $e",
+        );
       }
     }
   }
@@ -289,18 +367,17 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
               onPressed: () => _processStatusUpdate(data['id'], "CREDIT", ctx),
             ),
 
-          // Botón Cancelar (Para salir sin hacer nada, útil si es crédito y no pagan)
-          if (isCredit)
-            TextButton(
-              onPressed: () {
-                Navigator.pop(ctx);
-                setState(() => _isProcessing = false);
-              },
-              child: Text(
-                "Cancelar",
-                style: TextStyle(color: BColors.textSecondary(context)),
-              ),
+          // Botón Cancelar (Siempre disponible para escanear otro)
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              setState(() => _isProcessing = false);
+            },
+            child: Text(
+              "Cancelar",
+              style: TextStyle(color: BColors.textSecondary(context)),
             ),
+          ),
 
           // Botón Pagado
           FilledButton.icon(

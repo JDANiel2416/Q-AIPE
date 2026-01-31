@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:convert'; // JsonEncode
 import 'dart:ui' as ui;
 import 'package:flutter/cupertino.dart';
 import 'ticket_screen.dart';
@@ -167,8 +168,13 @@ class _HomeScreenState extends State<HomeScreen>
                   text: msg['content'],
                   type: MessageType.botResponse,
                   results: results,
-                  isAnimated:
-                      true, // Don't animate history (true = static text)
+                  isAnimated: true,
+                  id: msg['id'], // ID del mensaje para updates
+                  // Recuperar estado persistido
+                  isReserved: msg['attachment_data']?['is_reserved'] ?? false,
+                  selectedBodegaId:
+                      msg['attachment_data']?['selected_bodega_id'],
+                  ticketData: msg['attachment_data']?['ticket_data'],
                 ),
               );
             }
@@ -177,7 +183,7 @@ class _HomeScreenState extends State<HomeScreen>
           _showScrollDownButton = false;
           _isAtBottom = true;
         });
-        WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
+        // No scrollear al cargar historial - dejar en posición natural
       } else {
         setState(() => _isLoading = false);
       }
@@ -263,6 +269,25 @@ class _HomeScreenState extends State<HomeScreen>
       ),
     );
 
+    // 1. Verificar si ya está reservado (Re-click en "Ver Ticket")
+    if (_messages.isNotEmpty &&
+        _messages.last.isReserved &&
+        _messages.last.selectedBodegaId == bodega.bodegaId &&
+        _messages.last.ticketData != null) {
+      if (mounted)
+        Navigator.of(
+          context,
+        ).pop(); // Cerrar loading si se abrió por error (o evitar abrirlo antes)
+
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => TicketScreen(ticketData: _messages.last.ticketData!),
+        ),
+      );
+      return;
+    }
+
     try {
       final response = await _apiService.createReservation(
         _currentUserId ?? "",
@@ -271,6 +296,29 @@ class _HomeScreenState extends State<HomeScreen>
       );
       if (mounted) Navigator.of(context).pop();
       if (response['success'] == true && mounted) {
+        // Normalizar datos para TicketScreen
+        response['id'] = response['reservation_id'];
+        response['status'] = 'PENDING';
+
+        // ACTUALIZAR UI DEL CHAT: Marcar como reservado
+        if (_messages.isNotEmpty &&
+            _messages.last.type == MessageType.botResponse) {
+          setState(() {
+            _messages.last.isReserved = true;
+            _messages.last.selectedBodegaId = bodega.bodegaId;
+            _messages.last.ticketData = response;
+          });
+
+          // PERSISTENCIA BACKEND
+          if (_messages.last.id != null) {
+            await _apiService.updateChatMessage(_messages.last.id!, {
+              "is_reserved": true,
+              "selected_bodega_id": bodega.bodegaId,
+              "ticket_data": response,
+            });
+          }
+        }
+
         Navigator.push(
           context,
           MaterialPageRoute(builder: (_) => TicketScreen(ticketData: response)),
@@ -292,6 +340,190 @@ class _HomeScreenState extends State<HomeScreen>
             backgroundColor: HomeColors.error,
           ),
         );
+    }
+  }
+
+  Future<void> _processUnifiedReservation(
+    List<BodegaSearchResult> bodegas,
+  ) async {
+    // 1. Validar login y user ID
+    if (_currentUserId == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text("Error: No hay usuario autenticado"),
+            backgroundColor: HomeColors.error,
+          ),
+        );
+      }
+      return;
+    }
+
+    // 2. Mostrar loading
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(color: HomeColors.primary(context)),
+            const SizedBox(height: 16),
+            const Text(
+              "Procesando pedido...",
+              style: TextStyle(color: Colors.white, fontSize: 16),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    List<Map<String, dynamic>> allItems = [];
+    double grandTotal = 0.0;
+    List<String> reservationIds = [];
+    bool allSuccess = true;
+    String? firstError;
+    String userName = "Usuario";
+
+    // 1. Verificar si este intento viene de un mensaje YA reservado (Re-click en "Ver Ticket")
+    // Esto es un poco hacky: verificamos si el último mensaje ya tiene datos
+    if (_messages.isNotEmpty &&
+        _messages.last.isReserved &&
+        bodegas.length == 1 &&
+        _messages.last.selectedBodegaId == bodegas.first.bodegaId &&
+        _messages.last.ticketData != null) {
+      // Navegación directa
+      if (mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) =>
+                TicketScreen(ticketData: _messages.last.ticketData!),
+          ),
+        );
+      }
+      return;
+    }
+
+    try {
+      // 3. Loop: Crear reserva por cada bodega
+      for (var bodega in bodegas) {
+        final response = await _apiService.createReservation(
+          _currentUserId!,
+          bodega.bodegaId,
+          bodega.foundItems,
+        );
+
+        if (response['success'] == true) {
+          // Extraer datos del ticket de esta reserva
+          final items = response['items'] as List<dynamic>? ?? [];
+          final total = (response['total'] is int)
+              ? (response['total'] as int).toDouble()
+              : (response['total'] as double? ?? 0.0);
+          final qrData = response['qr_data'] as String? ?? "";
+          if (response['formatted_name'] != null) {
+            userName = response['formatted_name'];
+          }
+
+          // Inyectar nombre de la bodega en cada item para el ticket
+          final itemsWithBodega = items.map((item) {
+            final Map<String, dynamic> itemMap = Map<String, dynamic>.from(
+              item,
+            );
+            itemMap['bodega_name'] = bodega.name;
+            return itemMap;
+          }).toList();
+
+          allItems.addAll(itemsWithBodega);
+          grandTotal += total;
+          reservationIds.add(qrData);
+        } else {
+          allSuccess = false;
+          firstError =
+              response['message'] ?? "Error desconocido en ${bodega.name}";
+          break;
+        }
+      }
+
+      if (mounted) Navigator.of(context).pop(); // Cerrar loading
+
+      if (allSuccess && reservationIds.isNotEmpty) {
+        final combinedTicketData = {
+          'items': allItems,
+          'total': grandTotal,
+          'formatted_name': userName,
+          'qr_data': jsonEncode(
+            reservationIds,
+          ), // Lista JSON unificada: ["RES...","RES..."]
+          'success': true,
+        };
+
+        // ACTUALIZAR ESTADO DEL MENSAJE (Para UI "Reservado")
+        if (_messages.isNotEmpty &&
+            _messages.last.type == MessageType.botResponse) {
+          final lastMsg = _messages.last;
+
+          setState(() {
+            lastMsg.isReserved = true;
+            // Si es única, guardamos el ID para filtro visual
+            if (bodegas.length == 1) {
+              lastMsg.selectedBodegaId = bodegas.first.bodegaId;
+            }
+            lastMsg.ticketData = combinedTicketData;
+          });
+
+          // PERSISTENCIA BACKEND
+          if (lastMsg.id != null) {
+            await _apiService.updateChatMessage(lastMsg.id!, {
+              "is_reserved": true,
+              "selected_bodega_id": bodegas.length == 1
+                  ? bodegas.first.bodegaId
+                  : null,
+              "ticket_data": combinedTicketData,
+            });
+          }
+        }
+
+        // Navegar al ticket
+        if (mounted) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => TicketScreen(ticketData: combinedTicketData),
+            ),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                "Error al reservar: ${firstError ?? 'Falló una reserva'}",
+              ),
+              backgroundColor: HomeColors.error,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) Navigator.of(context).pop();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Error de conexión: $e"),
+            backgroundColor: HomeColors.error,
+          ),
+        );
+      }
+    }
+  }
+
+  void _navigateToTicket(Map<String, dynamic> ticketData) {
+    if (mounted) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => TicketScreen(ticketData: ticketData)),
+      );
     }
   }
 
@@ -354,7 +586,7 @@ class _HomeScreenState extends State<HomeScreen>
 
   // --- CHAT LOGIC ---
   Future<void> _handleSubmitted([String? explicitText]) async {
-    if (!_checkLocationAndPermissionsSync()) return;
+    if (!await _checkGPSAndPermissions()) return;
 
     final text = explicitText ?? _controller.text.trim();
     if (text.isEmpty) return;
@@ -367,7 +599,7 @@ class _HomeScreenState extends State<HomeScreen>
     });
 
     if (explicitText == null) _controller.clear();
-    _scrollToBottom();
+    _scrollToBottom(); // Anclar mensaje del usuario arriba inmediatamente
 
     try {
       final response = await _apiService.searchSmart(
@@ -396,6 +628,7 @@ class _HomeScreenState extends State<HomeScreen>
         );
         _isLoading = false;
       });
+      _scrollToBottom(); // Mantener vista en posición 0 (mensaje usuario arriba)
     } catch (e) {
       setState(() {
         _messages.removeLast();
@@ -405,25 +638,96 @@ class _HomeScreenState extends State<HomeScreen>
         _isLoading = false;
       });
     }
-    _scrollToBottom();
+    // No scrollear después de la respuesta - mantener mensaje del usuario anclado
   }
 
-  bool _checkLocationAndPermissionsSync() {
-    // Versión simplificada para brevedad, asumir ok por ahora o implementar lógica completa
-    if (!_hasLocation) {
-      _getUserLocation();
+  Future<bool> _checkGPSAndPermissions() async {
+    bool serviceEnabled;
+    LocationPermission permission;
+
+    // 1. Verificar si el GPS está prendido
+    serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text(
+              "El GPS está desactivado. Actívalo para continuar.",
+            ),
+            backgroundColor: HomeColors.error,
+            action: SnackBarAction(
+              label: 'ACTIVAR',
+              textColor: Colors.white,
+              onPressed: () {
+                Geolocator.openLocationSettings();
+              },
+            ),
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
       return false;
     }
+
+    // 2. Verificar permisos
+    permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text(
+                "Necesitamos tu ubicación para sugerirte bodegas.",
+              ),
+              backgroundColor: HomeColors.error,
+            ),
+          );
+        }
+        return false;
+      }
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text(
+              "Permisos de ubicación denegados permanentemente. Habilítalos en configuración.",
+            ),
+            backgroundColor: HomeColors.error,
+            action: SnackBarAction(
+              label: 'CONFIGURAR',
+              textColor: Colors.white,
+              onPressed: () {
+                Geolocator.openAppSettings();
+              },
+            ),
+          ),
+        );
+      }
+      return false;
+    }
+
+    // 3. Si todo ok, asegurar que tenemos la ubicación actual
+    if (!_hasLocation) {
+      await _getUserLocation();
+      return _hasLocation;
+    }
+
     return true;
   }
 
   void _scrollToBottom() {
+    // Con lista invertida, posición 0 = mensajes más recientes (arriba visualmente)
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
         _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 400),
-          curve: Curves.easeOutQuad,
+          0,
+          duration: const Duration(
+            milliseconds: 800,
+          ), // Velocidad estándar y fluida
+          curve: Curves.easeOutQuart, // Curva premium muy suave
         );
       }
     });
@@ -489,9 +793,11 @@ class _HomeScreenState extends State<HomeScreen>
                                   });
                                 },
                                 onReserve: _processReservation,
+                                onConfirmOrder: _processUnifiedReservation,
                                 onCompleteTyping: (msg) {
                                   setState(() => msg.isAnimated = true);
                                 },
+                                onViewTicket: _navigateToTicket,
                               )
                             : VisualStoreView(
                                 userLocation: _userLocation,

@@ -93,8 +93,9 @@ def get_user_profile(user_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
     
     # Extraer primer nombre y primer apellido
-    full_name = user.full_name or "Usuario"
-    name_parts = full_name.split()
+    # Extraer primer nombre y primer apellido
+    decrypted_full_name = decrypt_value(user.full_name) or "Usuario"
+    name_parts = decrypted_full_name.split()
     
     if len(name_parts) >= 2:
         first_name = f"{name_parts[0]} {name_parts[1]}"  # Primer nombre + primer apellido
@@ -104,7 +105,7 @@ def get_user_profile(user_id: str, db: Session = Depends(get_db)):
     return {
         "id": str(user.id),
         "first_name": first_name,
-        "full_name": full_name,
+        "full_name": decrypt_value(user.full_name), # 🔓 Desencriptar
         "phone": decrypt_value(user.phone_number),
         "email": decrypt_value(user.email),
         "is_verified": user.is_verified
@@ -306,6 +307,7 @@ def get_chat_messages(session_id: str, user_id: str, db: Session = Depends(get_d
     messages_data = []
     for msg in session.messages:
         messages_data.append({
+            "id": str(msg.id), # <--- ID NECESARIO PARA PERSISTENCIA
             "role": msg.role,
             "content": msg.content,
             "created_at": msg.created_at.isoformat(),
@@ -388,7 +390,27 @@ def get_user_orders(user_id: str, db: Session = Depends(get_db)):
             "status": res.status,
             "created_at": res.created_at.isoformat(),
             "items": items,
-            "qr_data": res.qr_code_data
+            "qr_data": decrypt_value(res.qr_code_data)  # 🔓 Desencriptar para mostrar
         })
     
     return result
+
+
+@router.patch("/orders/{order_id}/cancel")
+def cancel_order(order_id: str, user_id: str, db: Session = Depends(get_db)):
+    """Cancelar un pedido pendiente"""
+    reservation = db.query(Reservation).filter(
+        Reservation.id == order_id,
+        Reservation.user_id == user_id
+    ).first()
+    
+    if not reservation:
+        raise HTTPException(status_code=404, detail="Pedido no encontrado")
+        
+    if reservation.status != "PENDING":
+        raise HTTPException(status_code=400, detail="Solo se pueden cancelar pedidos pendientes")
+        
+    reservation.status = "CANCELLED"
+    db.commit()
+    
+    return {"message": "Pedido cancelado exitosamente"}

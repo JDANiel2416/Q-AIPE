@@ -334,6 +334,23 @@ class ApiService {
     }
   }
 
+  // Cancelar pedido (Cliente)
+  Future<bool> cancelOrder(String orderId, String userId) async {
+    final url = Uri.parse(
+      '$baseUrl/client/orders/$orderId/cancel?user_id=$userId',
+    );
+    try {
+      final response = await http.patch(
+        url,
+        headers: {"Content-Type": "application/json"},
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      print("Error cancelling order: $e");
+      return false;
+    }
+  }
+
   // NUEVO: Escaneo Mágico con IA
   Future<Map<String, dynamic>> scanMagicProduct(File imageFile) async {
     final url = Uri.parse('$baseUrl/bodeguero/scan-magic');
@@ -480,6 +497,25 @@ class ApiService {
       }
     } catch (e) {
       throw Exception('Error sending voice: $e');
+    }
+  }
+
+  // --- NUEVO: Actualizar mensaje del chat (Persistencia) ---
+  Future<bool> updateChatMessage(
+    String messageId,
+    Map<String, dynamic> data,
+  ) async {
+    final url = Uri.parse('$baseUrl/chat/messages/$messageId');
+    try {
+      final response = await http.patch(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode(data),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      print("Error updating chat message: $e");
+      return false;
     }
   }
 

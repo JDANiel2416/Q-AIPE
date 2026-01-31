@@ -5,7 +5,7 @@ from app.models.tables import Reservation, ReservationItem, User, Bodega
 from pydantic import BaseModel
 from typing import List
 import uuid
-from app.core.security import encrypt_value, decrypt_value
+from app.core.security import encrypt_value, decrypt_value, format_public_name
 
 router = APIRouter()
 
@@ -87,15 +87,17 @@ async def create_reservation(request: CreateReservationRequest, db: Session = De
         db.commit()
 
         # 5. Notificación al Bodeguero (Simulada / Log)
+        # 5. Notificación al Bodeguero (Simulada / Log)
         # Formato: "Nombre Completo + Inicial Apellido"
-        full_name_parts = (user.full_name or "Cliente").split()
+        full_name_decrypted = decrypt_value(user.full_name) or "Cliente" # 🔓 Desencriptar
+        
+        full_name_parts = full_name_decrypted.split()
         if len(full_name_parts) >= 2:
             formatted_name = f"{full_name_parts[0]} {full_name_parts[1][0]}."
         else:
-            formatted_name = user.full_name or "Cliente"
-
+            formatted_name = full_name_decrypted
+            
         items_summary = ", ".join([f"{i.quantity}x {i.product_name}" for i in request.items])
-        
         
         notification_msg = (
             f"🔔 [NUEVO PEDIDO] {formatted_name} ha reservado: {items_summary}. "
@@ -109,20 +111,13 @@ async def create_reservation(request: CreateReservationRequest, db: Session = De
         # Obtener el usuario bodeguero (dueño de la bodega)
         bodeguero = db.query(User).filter(User.id == bodega.owner_id).first()
         
-        # IMPORTANTE: Solo enviar si:
-        # 1. El bodeguero existe y tiene token (OneSignal ID guardado en fcm_token)
-        # 2. El bodeguero NO es el mismo usuario que hizo el pedido
-        # 3. El token del bodeguero es diferente al del cliente
         if bodeguero and bodeguero.fcm_token:
-            # Verificar que no sea el mismo usuario
             if str(bodeguero.id) == str(request.user_id):
                 print(f"⚠️ El bodeguero es el mismo que el cliente, no se envía notificación")
-            # Verificar que no sea el mismo dispositivo (opcional, pero buena práctica)
             elif user.fcm_token and bodeguero.fcm_token == user.fcm_token:
                 print(f"⚠️ Cliente y bodeguero usan el mismo dispositivo/token, no se envía notificación")
             else:
-                # Enviar notificación vía OneSignal
-                notification_service.send_notification(
+                 notification_service.send_notification(
                     title="¡Nuevo Pedido Recibido!",
                     message=f"{formatted_name} ha realizado un pedido de S/{total_amount:.2f}",
                     player_ids=[bodeguero.fcm_token],
@@ -132,7 +127,7 @@ async def create_reservation(request: CreateReservationRequest, db: Session = De
                         "total": float(total_amount)
                     }
                 )
-                print(f"✅ Notificación enviada a bodeguero: {bodeguero.full_name}")
+                 print(f"✅ Notificación enviada a bodeguero: {decrypt_value(bodeguero.full_name)}")
         else:
             print(f"⚠️ Bodeguero sin token registrado, no se puede enviar push")
         # -----------------------------------
@@ -161,9 +156,8 @@ def validate_reservation(
     request: ReservationValidationRequest, 
     db: Session = Depends(get_db)
 ):
-    # QR Format: RES|uuid|amount
+    # ... previous logic ...
     try:
-        # Desencriptar primero
         decrypted_qr = decrypt_value(request.qr_data)
         if not decrypted_qr:
              raise HTTPException(status_code=400, detail="Código QR inválido o corrupto")
@@ -192,7 +186,7 @@ def validate_reservation(
                 "reservation": {
                     "id": str(reservation.id),
                     "total": float(reservation.total_amount),
-                    "client": reservation.user.full_name if reservation.user else "Cliente",
+                    "client": format_public_name(decrypt_value(reservation.user.full_name)) if reservation.user else "Cliente",
                     "status": reservation.status
                 }
             }
@@ -200,16 +194,13 @@ def validate_reservation(
         if reservation.status not in ["PENDING", "CREDIT"]:
              raise HTTPException(status_code=400, detail=f"No se puede validar. Estado actual: {reservation.status}")
 
-        # NO ACTUALIZAMOS EL ESTADO AQUI. SOLO VALIDAMOS.
-        # El frontend debe llamar a /orders/{id}/status para confirmar el pago/fiado.
-
         return {
             "success": True, 
             "message": "Ticket válido. Seleccione una acción.",
             "reservation": {
                 "id": str(reservation.id),
                 "total": float(reservation.total_amount),
-                "client": reservation.user.full_name if reservation.user else "Cliente",
+                "client": format_public_name(decrypt_value(reservation.user.full_name)) if reservation.user else "Cliente",
                 "status": reservation.status
             }
         }

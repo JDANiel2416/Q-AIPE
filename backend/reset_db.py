@@ -152,7 +152,7 @@ def reset_database():
         lucho_phone = "999"
         don_lucho = User(
             dni="11111111", 
-            full_name="LUIS RAMIREZ", 
+            full_name=encrypt_value("LUIS RAMIREZ"), # 🔐 Encrypting full_name
             password_hash=get_password_hash("123"),  # <-- Hash contraseña
             phone_number=encrypt_value(lucho_phone), # <-- Encriptar teléfono
             phone_hash=get_search_hash(lucho_phone), # <-- Hash teléfono para búsqueda
@@ -164,7 +164,7 @@ def reset_database():
         pepe_phone = "888"
         tio_pepe = User(
             dni="22222222", 
-            full_name="JOSE TORRES", 
+            full_name=encrypt_value("JOSE TORRES"), # 🔐 Encrypting full_name
             password_hash=get_password_hash("123"), 
             phone_number=encrypt_value(pepe_phone),
             phone_hash=get_search_hash(pepe_phone),

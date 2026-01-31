@@ -6,12 +6,14 @@ class BodegaCard extends StatelessWidget {
   final BodegaSearchResult bodega;
   final VoidCallback onViewMap;
   final VoidCallback onReserve;
+  final bool isReserved; // Nuevo
 
   const BodegaCard({
     super.key,
     required this.bodega,
     required this.onViewMap,
     required this.onReserve,
+    this.isReserved = false,
   });
 
   @override
@@ -166,21 +168,25 @@ class BodegaCard extends StatelessWidget {
                 Expanded(
                   child: ElevatedButton.icon(
                     onPressed: onReserve,
-                    icon: const Icon(
-                      Icons.shopping_bag_outlined,
+                    icon: Icon(
+                      isReserved
+                          ? Icons.confirmation_number
+                          : Icons.shopping_bag_outlined,
                       size: 18,
                       color: Colors.white,
                     ),
-                    label: const Text(
-                      "Reservar",
-                      style: TextStyle(
+                    label: Text(
+                      isReserved ? "Ver mi ticket" : "Reservar",
+                      style: const TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
                     style: ElevatedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 12),
-                      backgroundColor: HomeColors.primary(context),
+                      backgroundColor: isReserved
+                          ? Colors.green
+                          : HomeColors.primary(context),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),

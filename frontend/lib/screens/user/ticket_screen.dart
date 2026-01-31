@@ -5,6 +5,8 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'dart:typed_data';
 import 'home_colors.dart'; // Importar helper de colores
+import '../../services/api_service.dart';
+import '../../services/session_service.dart';
 
 class TicketScreen extends StatelessWidget {
   final Map<String, dynamic> ticketData;
@@ -76,34 +78,8 @@ class TicketScreen extends StatelessWidget {
                   const Divider(height: 40),
 
                   // Lista de productos
-                  ListView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: items.length,
-                    itemBuilder: (context, index) {
-                      final item = items[index];
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 4),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              "${item['quantity']}x ${item['product_name']}",
-                              style: TextStyle(
-                                color: HomeColors.textPrimary(context),
-                              ),
-                            ),
-                            Text(
-                              "S/${(item['quantity'] * item['unit_price']).toStringAsFixed(2)}",
-                              style: TextStyle(
-                                color: HomeColors.textPrimary(context),
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
+                  // Lista de productos agrupada por bodega
+                  ..._buildGroupedItems(context, items),
 
                   Divider(height: 40, color: HomeColors.divider(context)),
                   Row(
@@ -175,6 +151,28 @@ class TicketScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 16),
+            if (ticketData['status'] == 'PENDING' && ticketData['id'] != null)
+              Column(
+                children: [
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: OutlinedButton(
+                      onPressed: () =>
+                          _cancelOrder(context, ticketData['id'].toString()),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.red,
+                        side: const BorderSide(color: Colors.red),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: const Text("Cancelar Pedido"),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+              ),
             SizedBox(
               width: double.infinity,
               height: 50,
@@ -197,6 +195,73 @@ class TicketScreen extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  List<Widget> _buildGroupedItems(BuildContext context, List<dynamic> items) {
+    // 1. Agrupar por nombre de bodega
+    final Map<String, List<dynamic>> grouped = {};
+    for (var item in items) {
+      final key = item['bodega_name'] ?? 'Bodega';
+      if (!grouped.containsKey(key)) {
+        grouped[key] = [];
+      }
+      grouped[key]!.add(item);
+    }
+
+    // 2. Construir widgets
+    List<Widget> widgets = [];
+    grouped.forEach((bodegaName, bodegaItems) {
+      widgets.add(
+        Padding(
+          padding: const EdgeInsets.only(top: 16, bottom: 8),
+          child: Row(
+            children: [
+              Icon(Icons.store, size: 16, color: HomeColors.primary(context)),
+              const SizedBox(width: 8),
+              Text(
+                bodegaName,
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                  color: HomeColors.primary(context),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+
+      for (var item in bodegaItems) {
+        widgets.add(
+          Padding(
+            padding: const EdgeInsets.only(left: 24, bottom: 4), // Indentado
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  "${item['quantity']}x ${item['product_name']}",
+                  style: TextStyle(
+                    color: HomeColors.textPrimary(context),
+                    fontSize: 13,
+                  ),
+                ),
+                Text(
+                  "S/${(item['quantity'] * item['unit_price']).toStringAsFixed(2)}",
+                  style: TextStyle(
+                    color: HomeColors.textPrimary(context),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      }
+      widgets.add(const SizedBox(height: 8)); // Espacio entre grupos
+    });
+
+    return widgets;
   }
 
   Future<void> _generateAndPrintPdf(BuildContext context) async {
@@ -369,5 +434,69 @@ class TicketScreen extends StatelessWidget {
     await Printing.layoutPdf(
       onLayout: (PdfPageFormat format) async => pdf.save(),
     );
+  }
+
+  Future<void> _cancelOrder(BuildContext context, String orderId) async {
+    // Confirm dialog
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Cancelar Pedido"),
+        content: const Text(
+          "¿Estás seguro de que quieres cancelar este pedido?",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text("No"),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text("Sí", style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    // Loading
+    if (context.mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) =>
+            Center(child: CircularProgressIndicator(color: Colors.white)),
+      );
+    }
+
+    final userId = await SessionService().getUserId();
+    if (userId != null) {
+      final success = await ApiService().cancelOrder(orderId, userId);
+      if (context.mounted) Navigator.pop(context); // Close loading
+
+      if (success) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text("Pedido cancelado"),
+              backgroundColor: HomeColors.success,
+            ),
+          );
+          Navigator.pop(context); // Close TicketScreen
+        }
+      } else {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text("Error al cancelar"),
+              backgroundColor: HomeColors.error,
+            ),
+          );
+        }
+      }
+    } else {
+      if (context.mounted) Navigator.pop(context); // Close loading if no user
+    }
   }
 }

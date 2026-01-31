@@ -15,8 +15,10 @@ class HomeChatView extends StatelessWidget {
   final ScrollController scrollController;
   final Function(BodegaSearchResult) onViewMap;
   final Function(BodegaSearchResult) onReserve;
-  final VoidCallback? onConfirmOrder;
+  final Function(List<BodegaSearchResult>)? onConfirmOrder;
   final Function(ChatMessage) onCompleteTyping;
+  final Function(Map<String, dynamic>)?
+  onViewTicket; // Callback para navegar al ticket
 
   const HomeChatView({
     super.key,
@@ -29,27 +31,14 @@ class HomeChatView extends StatelessWidget {
     required this.onReserve,
     this.onConfirmOrder,
     required this.onCompleteTyping,
+    this.onViewTicket,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        Positioned.fill(
-          child: NotificationListener<ScrollNotification>(
-            onNotification: (notification) {
-              // Scroll notification logic handled by controller in parent?
-              // Or we can expose a callback if needed.
-              // Parent handles onScroll via _scrollController.addListener, so this might be redundant unless we want specific events.
-              return false;
-            },
-            child: !isChatStarted
-                ? _buildWelcomeView(context)
-                : _buildChatList(context),
-          ),
-        ),
-      ],
-    );
+    return !isChatStarted
+        ? _buildWelcomeView(context)
+        : _buildChatList(context);
   }
 
   Widget _buildWelcomeView(BuildContext context) {
@@ -87,7 +76,6 @@ class HomeChatView extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 30),
-            // Texto dinámico según si tenemos ubicación
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -128,38 +116,30 @@ class HomeChatView extends StatelessWidget {
   }
 
   Widget _buildChatList(BuildContext context) {
-    return RepaintBoundary(
-      child: ListView.builder(
-        controller: scrollController,
-        physics: const BouncingScrollPhysics(),
-        padding: EdgeInsets.only(
-          left: 16,
-          right: 16,
-          top:
-              MediaQuery.of(context).padding.top + 80, // Espacio para el AppBar
-          bottom: 100, // Espacio para el Input Area
-        ),
-        itemCount: messages.length,
-        itemBuilder: (context, index) =>
-            _buildMessageItem(context, messages[index]),
+    // Lista invertida: index 0 = mensaje más reciente (aparece arriba visualmente)
+    return ListView.builder(
+      controller: scrollController,
+      reverse: true,
+      physics: const ClampingScrollPhysics(),
+      padding: EdgeInsets.only(
+        left: 16,
+        right: 16,
+        top: 100,
+        bottom: MediaQuery.of(context).padding.top + 72,
       ),
+      itemCount: messages.length,
+      itemBuilder: (context, index) {
+        // index 0 = último mensaje de la lista (más reciente)
+        final msg = messages[messages.length - 1 - index];
+        return _buildMessageItem(context, msg);
+      },
     );
   }
 
   Widget _buildMessageItem(BuildContext context, ChatMessage msg) {
-    return RepaintBoundary(
-      child: TweenAnimationBuilder(
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOut,
-        tween: Tween<double>(begin: 0, end: 1),
-        builder: (context, double value, child) {
-          return Opacity(opacity: value.clamp(0.0, 1.0), child: child);
-        },
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          child: _contentForMessage(context, msg),
-        ),
-      ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: _contentForMessage(context, msg),
     );
   }
 
@@ -186,8 +166,8 @@ class HomeChatView extends StatelessWidget {
             ),
             boxShadow: [
               BoxShadow(
-                color: HomeColors.primary(context).withOpacity(0.2),
-                blurRadius: 8,
+                color: HomeColors.primary(context).withOpacity(0.15),
+                blurRadius: 6,
                 offset: const Offset(0, 2),
               ),
             ],
@@ -199,89 +179,112 @@ class HomeChatView extends StatelessWidget {
         ),
       );
     } else if (msg.type == MessageType.botThinking) {
-      return Row(
-        children: [
-          SizedBox(
-            width: 15,
-            height: 15,
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-              color: HomeColors.primary(context),
-            ),
+      return Align(
+        alignment: Alignment.centerLeft,
+        child: Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 12,
+                height: 12,
+                child: CircularProgressIndicator(
+                  strokeWidth: 1.5,
+                  color: HomeColors.textSecondary(context),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                "Pensando...",
+                style: TextStyle(
+                  color: HomeColors.textSecondary(context),
+                  fontSize: 14,
+                ),
+              ),
+            ],
           ),
-          const SizedBox(width: 12),
-          Text(
-            "Consultando bodegas cercanas...",
-            style: TextStyle(
-              color: HomeColors.textMuted(context),
-              fontStyle: FontStyle.italic,
-            ),
-          ),
-        ],
+        ),
       );
     } else if (msg.type == MessageType.orderSummary) {
       return UnifiedOrderCard(
         results: msg.results ?? [],
-        onConfirmAll: onConfirmOrder ?? () {},
+        onConfirmAll: () => onConfirmOrder?.call(msg.results ?? []),
         onChangeSelection: onViewMap,
+        isReserved: msg.isReserved,
+        onViewTicket: () => onViewTicket?.call(msg.ticketData ?? {}),
       );
     } else {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (msg.text != null && msg.text!.isNotEmpty)
-            Container(
-              margin: const EdgeInsets.only(bottom: 12),
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: HomeColors.surface(context),
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(4),
-                  topRight: Radius.circular(20),
-                  bottomLeft: Radius.circular(20),
-                  bottomRight: Radius.circular(20),
-                ),
-                border: Border.all(color: HomeColors.border(context)),
-                boxShadow: [
-                  BoxShadow(
-                    color: HomeColors.shadowLight(context),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: msg.isAnimated
-                  ? Text(
-                      msg.text!,
-                      style: TextStyle(
-                        color: HomeColors.textPrimary(context),
-                        fontSize: 15,
-                        height: 1.4,
+      // Bot response - flat LLM style
+      // Usamos AnimatedSize para que el crecimiento del texto sea fluido
+      return Align(
+        alignment: Alignment.centerLeft,
+        child: AnimatedSize(
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+          alignment: Alignment.topLeft,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (msg.text != null && msg.text!.isNotEmpty)
+                msg.isAnimated
+                    ? Text(
+                        msg.text!,
+                        style: TextStyle(
+                          color: HomeColors.textPrimary(context),
+                          fontSize: 15,
+                          height: 1.6,
+                        ),
+                      )
+                    : TypingMessage(
+                        text: msg.text!,
+                        style: TextStyle(
+                          color: HomeColors.textPrimary(context),
+                          fontSize: 15,
+                          height: 1.6,
+                        ),
+                        onComplete: () => onCompleteTyping(msg),
                       ),
-                    )
-                  : TypingMessage(
-                      text: msg.text!,
-                      style: TextStyle(
-                        color: HomeColors.textPrimary(context),
-                        fontSize: 15,
-                        height: 1.4,
-                      ),
-                      onComplete: () => onCompleteTyping(msg),
-                    ),
-            ),
 
-          if (msg.isAnimated && msg.results != null && msg.results!.isNotEmpty)
-            ...msg.results!.asMap().entries.map((entry) {
-              return StaggeredItem(
-                index: entry.key,
-                child: BodegaCard(
-                  bodega: entry.value,
-                  onReserve: () => onReserve(entry.value),
-                  onViewMap: () => onViewMap(entry.value),
-                ),
-              );
-            }),
-        ],
+              if (msg.isAnimated &&
+                  msg.results != null &&
+                  msg.results!.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                ...msg.results!
+                    .where(
+                      (bodega) =>
+                          !msg.isReserved ||
+                          bodega.bodegaId == msg.selectedBodegaId,
+                    )
+                    .toList()
+                    .asMap()
+                    .entries
+                    .map((entry) {
+                      return StaggeredItem(
+                        index: entry.key,
+                        child: Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: BodegaCard(
+                            bodega: entry.value,
+                            onReserve: () {
+                              if (msg.isReserved) {
+                                onViewTicket?.call(msg.ticketData ?? {});
+                              } else {
+                                onReserve(entry.value);
+                              }
+                            },
+                            onViewMap: () => onViewMap(entry.value),
+                            isReserved:
+                                msg.isReserved &&
+                                entry.value.bodegaId == msg.selectedBodegaId,
+                          ),
+                        ),
+                      );
+                    }),
+              ],
+            ],
+          ),
+        ),
       );
     }
   }

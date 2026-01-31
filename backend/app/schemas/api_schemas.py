@@ -63,6 +63,7 @@ class SmartSearchResponse(BaseModel):
     message: str
     results: List[BodegaSearchResult]
     session_id: Optional[UUID] = None
+    message_id: Optional[UUID] = None # NUEVO: Para poder actualizar el mensaje con la reserva
     is_order_summary: bool = False
     transcription: Optional[str] = None # NUEVO
 

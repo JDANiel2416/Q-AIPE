@@ -22,14 +22,9 @@ class NotificationService:
             data (dict, optional): Datos adicionales para enviar en el payload.
         """
         
-        # Desencriptar tokens antes de enviar a OneSignal
-        decrypted_ids = []
-        if player_ids:
-            for pid in player_ids:
-                if pid:
-                    decrypted = decrypt_value(pid)
-                    if decrypted:
-                        decrypted_ids.append(decrypted)
+        # Los tokens FCM/OneSignal se guardan en texto plano (no encriptados)
+        # así que los usamos directamente sin desencriptar
+        valid_ids = [pid for pid in (player_ids or []) if pid]
         
         
         headers = {
@@ -44,8 +39,10 @@ class NotificationService:
             "data": data or {}
         }
 
-        if decrypted_ids:
-            payload["include_player_ids"] = decrypted_ids
+        if valid_ids:
+            payload["include_player_ids"] = valid_ids
+            # DEBUG: Log exact token being sent
+            print(f"DEBUG TOKEN BEING SENT: {valid_ids}")
         else:
             payload["included_segments"] = ["All"]
 

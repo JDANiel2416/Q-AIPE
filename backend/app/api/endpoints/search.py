@@ -11,6 +11,7 @@ from app.services.gemini_service import gemini_client
 from app.repositories.inventory_repo import InventoryRepository
 import json
 import unicodedata
+from app.core.security import decrypt_value
 
 router = APIRouter()
 
@@ -316,15 +317,18 @@ async def search_smart(request: SearchRequest, db: Session = Depends(get_db)):
                  bot_msg = ChatMessage(session_id=current_session.id, role="assistant", content=unified['message'])
                  db.add(bot_msg)
                  db.commit()
+                 db.refresh(bot_msg)
                  
                  return SmartSearchResponse(
                      message=unified['message'],
                      results=unified['results'],
                      session_id=current_session.id,
+                     message_id=bot_msg.id, # NUEVO
                      is_order_summary=True
                  )
         except Exception as e:
-             print(f"Error reviewing order: {e}")
+             print(f"Error reviewing order: {e}") 
+
 
 
     print(f"\n📍 [DEBUG] Ubicación: {request.user_lat}, {request.user_lon}")
@@ -358,7 +362,8 @@ async def search_smart(request: SearchRequest, db: Session = Depends(get_db)):
         user_record = db.query(User).filter(User.id == request.user_id).first()
         if user_record and user_record.full_name:
             # Solo primer nombre
-            user_name = user_record.full_name.strip().split()[0].title()
+            decrypted_name = decrypt_value(user_record.full_name) or "Usuario"
+            user_name = decrypted_name.strip().split()[0].title()
             print(f"👤 [API] Nombre detectado: {user_name}")
 
         # 1. Prioridad Máxima: Session ID explícito desde Frontend
@@ -469,10 +474,12 @@ async def search_smart(request: SearchRequest, db: Session = Depends(get_db)):
             )
             db.add(bot_msg_db)
             db.commit()
+            db.refresh(bot_msg_db)
 
         return SmartSearchResponse(
             message=bot_message,
             results=parsed_results,
+            message_id=bot_msg_db.id if current_session else None, # NUEVO
             session_id=current_session.id if current_session else None,
             is_order_summary=True
         )
@@ -500,11 +507,13 @@ async def search_smart(request: SearchRequest, db: Session = Depends(get_db)):
             bot_msg_db = ChatMessage(session_id=current_session.id, role="assistant", content=bot_message)
             db.add(bot_msg_db)
             db.commit()
+            db.refresh(bot_msg_db)
         
         return SmartSearchResponse(
             message=bot_message, 
             results=[],
-            session_id=current_session.id if current_session else None
+            session_id=current_session.id if current_session else None,
+            message_id=bot_msg_db.id if current_session else None # NUEVO
         )
     
     # CASO A: Saludos y Despedidas - Solo responder, NO buscar productos
@@ -521,11 +530,13 @@ async def search_smart(request: SearchRequest, db: Session = Depends(get_db)):
             bot_msg_db = ChatMessage(session_id=current_session.id, role="assistant", content=bot_message)
             db.add(bot_msg_db)
             db.commit()
+            db.refresh(bot_msg_db)
         
         return SmartSearchResponse(
             message=bot_message, 
             results=[],
-            session_id=current_session.id if current_session else None
+            session_id=current_session.id if current_session else None,
+            message_id=bot_msg_db.id if current_session else None # NUEVO
         )
     
     # CASO B: Limpiar carrito
@@ -545,11 +556,13 @@ async def search_smart(request: SearchRequest, db: Session = Depends(get_db)):
             bot_msg_db = ChatMessage(session_id=current_session.id, role="assistant", content=bot_message)
             db.add(bot_msg_db)
             db.commit()
+            db.refresh(bot_msg_db)
         
         return SmartSearchResponse(
             message=bot_message, 
             results=[],
-            session_id=current_session.id if current_session else None
+            session_id=current_session.id if current_session else None,
+            message_id=bot_msg_db.id if current_session else None # NUEVO
         )
     
     # CASO C: Recordar pedido anterior - Solo mostrar el estado guardado
@@ -572,6 +585,7 @@ async def search_smart(request: SearchRequest, db: Session = Depends(get_db)):
             bot_msg_db = ChatMessage(session_id=current_session.id, role="assistant", content=bot_message)
             db.add(bot_msg_db)
             db.commit()
+            db.refresh(bot_msg_db)
         
         # Si hay estado, hacer búsqueda con esos productos
         if search_state:
@@ -581,7 +595,8 @@ async def search_smart(request: SearchRequest, db: Session = Depends(get_db)):
             return SmartSearchResponse(
                 message=bot_message, 
                 results=[],
-                session_id=current_session.id if current_session else None
+                session_id=current_session.id if current_session else None,
+                message_id=bot_msg_db.id if current_session else None # NUEVO
             )
     
     # CASO D: Confirmación simple
@@ -603,11 +618,13 @@ async def search_smart(request: SearchRequest, db: Session = Depends(get_db)):
                 bot_msg_db = ChatMessage(session_id=current_session.id, role="assistant", content=bot_message)
                 db.add(bot_msg_db)
                 db.commit()
+                db.refresh(bot_msg_db)
             
             return SmartSearchResponse(
                 message=bot_message, 
                 results=[],
-                session_id=current_session.id if current_session else None
+                session_id=current_session.id if current_session else None,
+                message_id=bot_msg_db.id if current_session else None # NUEVO
             )
     
     # CASO E: Búsqueda, Agregar, Modificar, Pregunta - Requieren procesamiento
@@ -658,8 +675,13 @@ async def search_smart(request: SearchRequest, db: Session = Depends(get_db)):
             bot_msg_db = ChatMessage(session_id=current_session.id, role="assistant", content=msg)
             db.add(bot_msg_db)
             db.commit()
+            db.refresh(bot_msg_db)
         
-        return SmartSearchResponse(message=msg, results=[])
+        return SmartSearchResponse(
+            message=msg, 
+            results=[], 
+            message_id=bot_msg_db.id if current_session else None # NUEVO
+        )
 
     # 2. Buscar en BD
     raw_results = InventoryRepository.search_products_smart(

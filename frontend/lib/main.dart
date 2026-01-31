@@ -38,7 +38,7 @@ void main() async {
 
     // --- NUEVO: Manejo de Notificaciones OneSignal ---
 
-    // 1. Click Listener (Navegación)
+    // 1. Click Listener (Navegación) - Para foreground, background y terminated
     OneSignal.Notifications.addClickListener((event) {
       print(
         "🔔 OneSignal Notification Clicked: ${event.notification.jsonRepresentation()}",
@@ -52,6 +52,10 @@ void main() async {
           if (reservationId != null) {
             print("🧭 Guardando navegación pendiente: $reservationId");
             PushNotificationService().setPendingNavigation(reservationId);
+
+            // NUEVO: Disparar navegación inmediata para foreground/background
+            // Esto emite el evento NAVIGATE_TO_ORDER al stream
+            PushNotificationService().handleOneSignalNotification(data);
           }
         }
       }

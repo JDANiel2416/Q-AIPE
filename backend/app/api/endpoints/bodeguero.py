@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from app.db.session import get_db
 from app.services.gemini_service import gemini_client
 from app.models.tables import User, Bodega, StoreInventory, MasterProduct, Category, SubCategory
-from app.core.security import encrypt_value, decrypt_value
+from app.core.security import encrypt_value, decrypt_value, format_public_name
 
 from app.schemas.api_schemas import ProductCreateRequest
 from pydantic import BaseModel
@@ -353,7 +353,7 @@ def get_profile(user_id: str, db: Session = Depends(get_db)):
 
     return {
         "user_id": str(user.id),
-        "full_name": user.full_name or "",
+        "full_name": decrypt_value(user.full_name) or "",
         "email": decrypt_value(user.email) or "",
         "phone_number": decrypt_value(user.phone_number) or "",
         "dni": user.dni or "",
@@ -479,7 +479,7 @@ def get_orders(user_id: str, db: Session = Depends(get_db)):
         result.append({
             "id": str(order.id),
             "created_at": order.created_at.isoformat(),
-            "client_name": order.user.full_name if order.user else "Cliente Anónimo",
+            "client_name": format_public_name(decrypt_value(order.user.full_name)) if order.user else "Cliente Anónimo",
             "total_amount": float(order.total_amount),
             "status": order.status,
             "items": items_data
@@ -509,7 +509,7 @@ def get_order_by_id(order_id: str, db: Session = Depends(get_db)):
     return {
         "id": str(order.id),
         "created_at": order.created_at.isoformat(),
-        "client_name": order.user.full_name if order.user else "Cliente Anónimo",
+        "client_name": format_public_name(decrypt_value(order.user.full_name)) if order.user else "Cliente Anónimo",
         "total_amount": float(order.total_amount),
         "status": order.status,
         "items": items_data
@@ -663,7 +663,7 @@ def get_dashboard_stats(user_id: str, db: Session = Depends(get_db)):
         
         pending_orders_data.append({
             "id": str(order.id),
-            "client_name": order.user.full_name if order.user else "Cliente Anónimo",
+            "client_name": format_public_name(decrypt_value(order.user.full_name)) if order.user else "Cliente Anónimo",
             "items_summary": items_summary,
             "total_amount": float(order.total_amount),
             "time_ago": time_ago,
@@ -773,7 +773,7 @@ def get_debtors(user_id: str, db: Session = Depends(get_db)):
         
         debtors_list.append({
             "user_id": str(debtor.user_id),
-            "client_name": debtor.client_name or "Cliente Anónimo",
+            "client_name": format_public_name(decrypt_value(debtor.client_name)) if debtor.client_name else "Cliente Anónimo",
             "phone": decrypt_value(debtor.phone) or "",
             "total_debt": debt_amount,
             "orders_count": debtor.orders_count
@@ -844,8 +844,8 @@ def get_debtor_orders(debtor_id: str, user_id: str, db: Session = Depends(get_db
 
     return {
         "debtor_id": debtor_id,
-        "client_name": debtor.full_name or "Cliente Anónimo",
-        "phone": debtor.phone_number or "",
+        "client_name": format_public_name(decrypt_value(debtor.full_name)) if debtor.full_name else "Cliente Anónimo",
+        "phone": decrypt_value(debtor.phone_number) or "",
         "total_debt": total_debt,
         "orders_count": len(orders_list),
         "orders": orders_list
