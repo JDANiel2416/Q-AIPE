@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.models.tables import Reservation, ReservationItem, User, Bodega
 from pydantic import BaseModel
-from typing import List
+from typing import List, Optional
 import uuid
 from app.core.security import encrypt_value, decrypt_value, format_public_name
 
@@ -19,6 +19,11 @@ class CreateReservationRequest(BaseModel):
     user_id: str
     bodega_id: str
     items: List[ReservationItemSchema]
+    # Campos de Delivery
+    delivery_type: str = "PICKUP"  # PICKUP | DELIVERY
+    delivery_address: Optional[str] = None
+    delivery_lat: Optional[float] = None
+    delivery_lng: Optional[float] = None
 
 @router.post("/create")
 async def create_reservation(request: CreateReservationRequest, db: Session = Depends(get_db)):
@@ -33,6 +38,32 @@ async def create_reservation(request: CreateReservationRequest, db: Session = De
         # 2. Calcular Totales
         total_amount = sum(item.quantity * item.unit_price for item in request.items)
         
+        # 2b. Procesar Delivery
+        delivery_fee = 0.0
+        delivery_coords_encrypted = None
+        delivery_coords_expires_at = None
+        
+        if request.delivery_type == "DELIVERY":
+            # Verificar que la bodega ofrece delivery
+            if not bodega.has_delivery:
+                raise HTTPException(status_code=400, detail="Esta bodega no ofrece delivery")
+            
+            # Obtener fee de la bodega
+            delivery_fee = float(bodega.delivery_fee) if bodega.delivery_fee else 3.00
+            total_amount += delivery_fee
+            
+            # Encriptar coordenadas si se proporcionan
+            print(f"📦 [CREATE_RES] Delivery Type: {request.delivery_type}")
+            print(f"📦 [CREATE_RES] Address: {request.delivery_address}")
+            
+            if request.delivery_lat and request.delivery_lng:
+                coords_str = f"{request.delivery_lat},{request.delivery_lng}"
+                delivery_coords_encrypted = encrypt_value(coords_str)
+                
+                # Expiración: 48 horas después de la creación
+                from datetime import datetime, timedelta
+                delivery_coords_expires_at = datetime.utcnow() + timedelta(hours=48)
+        
         # 3. Crear Reserva
         reservation_id = uuid.uuid4()
         # Generamos un string simple para el QR por ahora (ID de reserva)
@@ -44,7 +75,13 @@ async def create_reservation(request: CreateReservationRequest, db: Session = De
             bodega_id=request.bodega_id,
             total_amount=total_amount,
             status="PENDING",  # Pendiente hasta que bodeguero confirme
-            qr_code_data=encrypt_value(qr_data)
+            qr_code_data=encrypt_value(qr_data),
+            # Campos de Delivery
+            delivery_type=request.delivery_type,
+            delivery_address_text=request.delivery_address,
+            delivery_coords_encrypted=delivery_coords_encrypted,
+            delivery_coords_expires_at=delivery_coords_expires_at,
+            delivery_fee=delivery_fee
         )
         db.add(new_reservation)
         db.flush() # Para obtener el ID si fuera autoincrement (aquí ya lo tenemos)
@@ -139,7 +176,9 @@ async def create_reservation(request: CreateReservationRequest, db: Session = De
             "message": "Reserva creada exitosamente",
             "formatted_name": formatted_name,
             "total": total_amount,
-            "items": request.items
+            "items": request.items,
+            "delivery_fee": delivery_fee,
+            "delivery_type": request.delivery_type
         }
 
     except Exception as e:

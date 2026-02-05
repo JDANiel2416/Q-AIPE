@@ -5,7 +5,9 @@ class ProductItem {
   final double stock;
   final String unit;
   final Map<String, dynamic> attributes;
-  final int requestedQuantity; // <--- NUEVO CAMPO
+  final int requestedQuantity;
+  final String? imageUrl;
+  final String? category;
 
   ProductItem({
     required this.productId,
@@ -14,7 +16,9 @@ class ProductItem {
     required this.stock,
     required this.unit,
     required this.attributes,
-    this.requestedQuantity = 1, // Default 1
+    this.requestedQuantity = 1,
+    this.imageUrl,
+    this.category,
   });
 
   factory ProductItem.fromJson(Map<String, dynamic> json) {
@@ -27,8 +31,9 @@ class ProductItem {
       attributes: json['attributes'] != null
           ? Map<String, dynamic>.from(json['attributes'])
           : {},
-      // Leemos el valor o usamos 1 si no viene
       requestedQuantity: json['requested_quantity'] ?? 1,
+      imageUrl: json['image_url'],
+      category: json['category'],
     );
   }
 }

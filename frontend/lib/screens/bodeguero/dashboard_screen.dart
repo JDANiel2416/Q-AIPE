@@ -6,6 +6,7 @@ import 'dart:ui';
 import '../../services/session_service.dart';
 import '../../services/api_service.dart';
 import '../../services/push_notification_service.dart';
+import 'package:onesignal_flutter/onesignal_flutter.dart';
 import '../common/login_screen.dart';
 import 'product_management_screen.dart';
 import 'profile_screen.dart';
@@ -121,6 +122,36 @@ class _DashboardScreenState extends State<DashboardScreen> {
     });
 
     _checkPendingNavigation();
+    _syncOneSignalToken();
+  }
+
+  Future<void> _syncOneSignalToken() async {
+    try {
+      final userId = await SessionService().getUserId();
+      if (userId == null) return;
+
+      // Asegurar identity en OneSignal (por si se perdió la sesión local de OS)
+      OneSignal.login(userId);
+
+      // Obtener Push ID actual
+      String? pushId = OneSignal.User.pushSubscription.id;
+
+      if (pushId != null && pushId.isNotEmpty) {
+        print("📱 [Dashboard] Sincronizando OneSignal ID: $pushId");
+        await _api.registerOneSignalToken(userId, pushId);
+      } else {
+        print("⏳ [Dashboard] OneSignal ID no disponible, esperando...");
+        OneSignal.User.pushSubscription.addObserver((state) async {
+          final newId = state.current.id;
+          if (newId != null && newId.isNotEmpty) {
+            print("📱 [Dashboard] OneSignal ID detectado: $newId");
+            await _api.registerOneSignalToken(userId, newId);
+          }
+        });
+      }
+    } catch (e) {
+      print("⚠️ Error syncing OneSignal token: $e");
+    }
   }
 
   Future<void> _checkPendingNavigation() async {

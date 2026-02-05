@@ -8,6 +8,7 @@ class UnifiedOrderCard extends StatelessWidget {
   final Function(BodegaSearchResult) onChangeSelection; // Opción a futuro
   final bool isReserved;
   final VoidCallback onViewTicket;
+  final Function(String)? onRemoveItem; // Nuevo callback para quitar items
 
   const UnifiedOrderCard({
     Key? key,
@@ -16,6 +17,7 @@ class UnifiedOrderCard extends StatelessWidget {
     required this.onChangeSelection,
     this.isReserved = false,
     required this.onViewTicket,
+    this.onRemoveItem,
   }) : super(key: key);
 
   @override
@@ -253,9 +255,24 @@ class UnifiedOrderCard extends StatelessWidget {
           ...bodega.foundItems
               .map(
                 (item) => Padding(
-                  padding: const EdgeInsets.only(left: 26, bottom: 4),
+                  padding: const EdgeInsets.only(left: 12, bottom: 4),
                   child: Row(
                     children: [
+                      // Botón X para eliminar
+                      if (onRemoveItem != null)
+                        InkWell(
+                          onTap: () => onRemoveItem!(item.name),
+                          borderRadius: BorderRadius.circular(12),
+                          child: Padding(
+                            padding: const EdgeInsets.all(4.0),
+                            child: Icon(
+                              Icons.close,
+                              size: 16,
+                              color: HomeColors.error,
+                            ),
+                          ),
+                        ),
+                      const SizedBox(width: 4),
                       Text(
                         "${item.requestedQuantity}x ",
                         style: TextStyle(

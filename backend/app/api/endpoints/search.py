@@ -145,7 +145,9 @@ async def _parse_order_from_text(text: str, user_lat: float, user_lon: float, db
             stock=999,
             unit="UND",
             attributes={},
-            requested_quantity=qty
+            requested_quantity=qty,
+            image_url=p_master.image_url if p_master else None,
+            category=p_master.category if p_master else None
         )
         bodega_items[bod_name].append(item)
         
@@ -218,7 +220,9 @@ def _build_unified_order_response(search_state: List[dict], db: Session) -> dict
                      price=i['unit_price'],
                      requested_quantity=i['quantity'],
                      stock=999, unit="UND", attributes={},
-                     product_id=i['product_id']
+                     product_id=i.get('product_id'),
+                     image_url=i.get('image_url'),
+                     category=i.get('category')
                 ) for i in data['items']
             ],
             missing_items=[]
@@ -292,7 +296,14 @@ async def smart_search_voice(
         )
 
 @router.post("/smart", response_model=SmartSearchResponse)
-async def search_smart(request: SearchRequest, db: Session = Depends(get_db)):
+async def search_smart(
+    request: SearchRequest, 
+    db: Session = Depends(get_db)
+):
+    print(f"\n📨 [INPUT] User ({request.user_id}): '{request.query}'")
+    
+    # 0. Obtener usuario para personalizar
+    user = db.query(User).filter(User.id == request.user_id).first()
     
     # 0. DETECCIÓN COMANDO ORDEN (Antes de todo)
     if request.query and request.query.startswith("CMD_REVIEW_ORDER"):
@@ -517,12 +528,43 @@ async def search_smart(request: SearchRequest, db: Session = Depends(get_db)):
         )
     
     # CASO A: Saludos y Despedidas - Solo responder, NO buscar productos
-    if intent_type in ["GREETING", "FAREWELL"]:
+    if intent_type in ["GREETING", "FAREWELL", "CLARIFICATION_NEEDED"]:
+        
+        bot_intent = intent_type
+        
+        # --- NUEVO: PRE-BÚSQUEDA DE CONTEXTO PARA CLARIFICACIÓN ---
+        available_catalog = ""
+        if intent_type == "CLARIFICATION_NEEDED":
+             # Extraemos keywords simples del query para ver qué hay disponible
+             # Ej: "Coca" -> Buscamos todo lo que tenga "Coca" cerca
+             raw_keywords = [w for w in request.query.split() if len(w) > 3] # Solo palabras > 3 letras
+             
+             if raw_keywords:
+                 print(f"🔎 [CLARIFICATION-CONTEXT] Buscando contexto para: {raw_keywords}")
+                 try:
+                     context_products = InventoryRepository.search_products_smart(
+                         db, raw_keywords, request.user_lat, request.user_lon, max_dist_km=2.0
+                     )
+                     
+                     if context_products:
+                         # Resumir productos únicos encontrados
+                         unique_names = list(set([prod.name for _, prod, _ in context_products]))
+                         unique_names = unique_names[:15] # Limitar a 15 para no saturar prompt
+                         available_catalog = ", ".join(unique_names)
+                         print(f"🔎 [CLARIFICATION-CONTEXT] Encontrados: {len(unique_names)} variantes ({available_catalog})")
+                     else:
+                         print("🔎 [CLARIFICATION-CONTEXT] No se encontró nada relevante cerca.")
+                 except Exception as e:
+                     print(f"⚠️ Error buscando contexto de clarificación: {e}")
+
+        
         bot_message = await gemini_client.generate_conversational_response(
             request.query, 
-            intent_type, 
+            bot_intent, 
             user_name=user_name, 
-            greeting_time=greeting_time
+            greeting_time=greeting_time,
+            available_options=available_catalog, # <--- OPCIONES DISPONIBLES
+            avoid_greeting=avoid_greeting # <--- FLAG RESTAURADO
         )
         
         # Guardar respuesta del bot
@@ -532,6 +574,12 @@ async def search_smart(request: SearchRequest, db: Session = Depends(get_db)):
             db.commit()
             db.refresh(bot_msg_db)
         
+        
+        # LOG OUTPUT ADICIONAL (Para early return)
+        print(f"📤 [OUTPUT] Bot Response: '{bot_message}'")
+        print("📦 [OUTPUT] Offers: None (Conversational Response)")
+        print("-" * 50 + "\n")
+
         return SmartSearchResponse(
             message=bot_message, 
             results=[],
@@ -558,6 +606,12 @@ async def search_smart(request: SearchRequest, db: Session = Depends(get_db)):
             db.commit()
             db.refresh(bot_msg_db)
         
+        
+        # LOG OUTPUT ADICIONAL (Para early return)
+        print(f"📤 [OUTPUT] Bot Response: '{bot_message}'")
+        print("📦 [OUTPUT] Offers: None (Clear Cart)")
+        print("-" * 50 + "\n")
+
         return SmartSearchResponse(
             message=bot_message, 
             results=[],
@@ -592,6 +646,11 @@ async def search_smart(request: SearchRequest, db: Session = Depends(get_db)):
             # Continuar con la búsqueda usando el estado guardado
             intent_items = search_state
         else:
+            # LOG OUTPUT ADICIONAL (Para early return)
+            print(f"📤 [OUTPUT] Bot Response: '{bot_message}'")
+            print("📦 [OUTPUT] Offers: None (Recall Empty)")
+            print("-" * 50 + "\n")
+
             return SmartSearchResponse(
                 message=bot_message, 
                 results=[],
@@ -599,39 +658,22 @@ async def search_smart(request: SearchRequest, db: Session = Depends(get_db)):
                 message_id=bot_msg_db.id if current_session else None # NUEVO
             )
     
-    # CASO D: Confirmación simple
-    elif intent_type == "CONFIRMATION":
-        if search_state:
-            # Continuar con el pedido actual
-            intent_items = search_state
-            context = f"Confirmando pedido con {len(search_state)} productos"
-        else:
-            bot_message = await gemini_client.generate_conversational_response(
-                request.query, 
-                "CONFIRMATION", 
-                "No hay pedido pendiente",
-                user_name=user_name,
-                avoid_greeting=avoid_greeting
-            )
-            
-            if current_session:
-                bot_msg_db = ChatMessage(session_id=current_session.id, role="assistant", content=bot_message)
-                db.add(bot_msg_db)
-                db.commit()
-                db.refresh(bot_msg_db)
-            
-            return SmartSearchResponse(
-                message=bot_message, 
-                results=[],
-                session_id=current_session.id if current_session else None,
-                message_id=bot_msg_db.id if current_session else None # NUEVO
-            )
-    
-    # CASO E: Búsqueda, Agregar, Modificar, Pregunta - Requieren procesamiento
+    # CASO E: Búsqueda, Agregar, Modificar, Pregunta, Y AHORA CONFIRMACIONES - Requieren procesamiento
     else:
         # Determinar si usamos el estado anterior
         state_to_use = search_state if requires_state else []
         
+        # 1.5 Recuperar último mensaje del BOT para contexto (Negotiation Memory)
+        last_bot_msg_text = ""
+        if current_session:
+             last_msg = db.query(ChatMessage).filter(
+                 ChatMessage.session_id == current_session.id,
+                 ChatMessage.role == "assistant"
+             ).order_by(ChatMessage.created_at.desc()).first()
+             if last_msg:
+                 last_bot_msg_text = last_msg.content
+                 print(f"🤖 [MEMORY] Último mensaje del bot: '{last_bot_msg_text}'")
+
         # 2. Interpretación (Extracción de JSON) con MasterProduct Context
         known_products = []
         try:
@@ -640,12 +682,13 @@ async def search_smart(request: SearchRequest, db: Session = Depends(get_db)):
         except Exception as e:
             print(f"Error fetching known products: {e}")
 
-        # Llamar a interpret_search_intent con el tipo de intención
+        # Llamar a interpret_search_intent con el tipo de intención Y EL CONTEXTO
         updated_state = await gemini_client.interpret_search_intent(
             request.query, 
             state_to_use, 
             intent_type=intent_type,
-            known_products=known_products
+            known_products=known_products,
+            last_bot_message=last_bot_msg_text
         )
         intent_items = updated_state
         
@@ -819,62 +862,77 @@ async def search_smart(request: SearchRequest, db: Session = Depends(get_db)):
                         # Usuario pide 3L, producto no dice nada claro. No penalizar, pero no boost.
                         pass
                 
-                # Fallback de texto simple
-                pref_norm = normalize_text(pref)
-                if pref_norm in full_product_text and not strict_penalty:
-                     attribute_boost += 5
+                
+                # Fallback de texto simple (Marcas, Tipos, Sabores)
+                else:
+                    pref_norm = normalize_text(pref)
+                    # Si el atributo es significativo (>2 chars) y NO está en el producto -> PENALIZAR
+                    if len(pref_norm) > 2:
+                        if pref_norm in full_product_text:
+                            attribute_boost += 5
+                        else:
+                            # CRÍTICO: Si el usuario pidió explícitamente "Faraón" y no está -> NO ES MATCH PERFECTO
+                            strict_penalty = True
+                            print(f"   ⚠️ Atributo faltante: '{pref_norm}' -> Penalty Applied")
             
             if strict_penalty:
-                score -= 100 # Castigo severo para descartarlo o mandarlo al fondo
+                # MARKER: Esto es un "Partial Match" (Negotiation Item)
+                # No lo penalizamos con -100, sino que lo marcamos especial.
+                score = 5 # Score bajo pero positivo para que entre
+                is_negotiation = True
+                print(f"   PARTIAL MATCH: {prod.name} (Penalty Applied) -> Score: {score}")
             else:
                 score += attribute_boost
+                is_negotiation = False
+                print(f"   PERFECT MATCH: {prod.name} -> Score: {score}")
             
-            # UMBRAL: Mínimo 8 puntos
-            if score >= 8:
-                # Guardamos el intent_index (idx) para filtrar después
-                scored_results.append((inv, prod, bodega, intent.get("quantity", 1), score, idx))
-                # NOTA: No hacemos break aquí porque un mismo producto podría teóricamente satisfacer dos intents diferentes
-                # (aunque es raro, ej: "dame una coca y una gaseosa negra")
+            # UMBRAL: Mínimo 5 puntos (ahora permitimos partials)
+            if score >= 5:
+                scored_results.append((inv, prod, bodega, intent.get("quantity", 1), score, idx, is_negotiation))
 
     print(f"✨ [DEBUG] Resultados con scoring: {len(scored_results)}")
     
     # 3.5 FALLBACK (Solo si no hay NADA para un intent específico)
-    # Comprobamos qué intents no tienen candidatos
     covered_intents = set(item[5] for item in scored_results)
     
     if len(covered_intents) < len(intent_items):
         print("⚠️ [FALLBACK] Algunos items no tienen match exacto, buscando similares...")
-        
         for idx, intent in enumerate(intent_items):
-            if idx in covered_intents: continue # Ya cubierto
-            
+            if idx in covered_intents: continue
             base_name = normalize_text(intent.get("product_name", ""))
             if not base_name: continue
-
             for inv, prod, bodega in raw_results:
                 prod_name_norm = normalize_text(prod.name)
                 prod_cat_norm = normalize_text(prod.category)
                 prod_syns = [normalize_text(s) for s in (prod.synonyms or [])]
-                
-                # Búsqueda flexible
                 if base_name in prod_name_norm or base_name in prod_cat_norm or any(base_name in s for s in prod_syns):
-                    # Score bajo (5)
-                    scored_results.append((inv, prod, bodega, intent.get("quantity", 1), 5, idx))
+                    scored_results.append((inv, prod, bodega, intent.get("quantity", 1), 5, idx, False)) # False? Maybe True if fallback? Let's say False for now to show results.
 
     # 4. AGRUPAMIENTO INTELIGENTE (Top 1 por Intent por Bodega)
-    bodegas_map = {} # { bodega_id: { "bodega": b, "selections": { intent_idx: (score, item) } } }
+    bodegas_map = {} 
 
-    for inv, prod, bodega, qty, score, intent_idx in scored_results:
+    for inv, prod, bodega, qty, score, intent_idx, is_negotiation in scored_results:
         bid = bodega.id
         if bid not in bodegas_map:
-            bodegas_map[bid] = {"bodega": bodega, "selections": {}}
+            bodegas_map[bid] = {"bodega": bodega, "selections": {}, "negotiations": []}
         
-        # Lógica "Rey de la Colina": Si ya tenemos un candidato para este intent_idx en esta bodega,
-        # nos quedamos con el de mayor score.
+        # Lógica "Rey de la Colina"
         current_selection = bodegas_map[bid]["selections"].get(intent_idx)
         
+        if is_negotiation:
+             # Si es negociación, lo guardamos en una lista aparte para contexto, NO reemplaza al principal si existe
+             bodegas_map[bid]["negotiations"].append({
+                 "name": prod.name,
+                 "reason": "Different Size/Variant",
+                 "intent_idx": intent_idx
+             })
+             print(f"   🗳️ Guardado como NEGOTIATION ITEM: {prod.name} en Bodega {bodega.name}")
+             # AUNQUE... si es la única opción, quizás deberíamos trackearla?
+             # Por ahora, "Partial Matches" NO entran al carrito automático. Solo al texto.
+             continue
+
         if current_selection is None or score > current_selection[0]:
-            # Guardamos el score y el item creado
+            print(f"   🏆 Ganador TEMPORAL para intent {intent_idx}: {prod.name} (Score: {score}) en Bodega {bodega.name}")
             item_obj = ProductItem(
                 product_id=prod.id, 
                 name=prod.name, 
@@ -882,52 +940,37 @@ async def search_smart(request: SearchRequest, db: Session = Depends(get_db)):
                 stock=inv.stock_quantity, 
                 unit=prod.default_unit or "UND",
                 attributes=prod.attributes,
-                requested_quantity=qty
+                requested_quantity=qty,
+                image_url=prod.image_url,
+                category=prod.category
             )
             bodegas_map[bid]["selections"][intent_idx] = (score, item_obj)
 
     # Convertir al formato final
-    final_bodega_list = []
-    
-    for bid, data in bodegas_map.items():
-        found_items = []
-        total_price = 0.0
-        
-        # Recuperamos los ganadores de cada intent
-        for score, item in data["selections"].values():
-            found_items.append(item)
-            total_price += (float(item.price) * item.requested_quantity)
-        
-        # Guardamos en el mapa final para el loop siguiente (que ya existía en el código original)
-        # Hack para compatibilidad con código existente abajo:
-        data["items"] = found_items
-        data["total"] = total_price
-        # El código original usa `bodegas_map` pero con otra estructura, así que ajustemos:
-        # El código original iteraba `bodegas_map.items()` abajo.
-        # Solo necesitamos asegurarnos que data["items"] y data["total"] existan.
-
-
     response_list = []
-    found_details = [] # <--- Restauramos esto
-    
-    # CALCULAMOS COMPLETITUD REAL
-    # completeness = items_encontrados / total_intenciones
-    total_intents = len(intent_items) if intent_items else 1
     
     for bib, data in bodegas_map.items():
-         found_items_list = data["items"]
-         found_len = len(found_items_list)
-         completeness = found_len / total_intents if total_intents > 0 else 0
+         found_items_list = []
+         total_price = 0.0
          
-         # Llenamos found_details para el resumen
-         for item in found_items_list:
-             qty_str = f" x{item.requested_quantity}" if item.requested_quantity > 1 else ""
-             found_details.append(f"{item.name}{qty_str}")
-
+         for score, item in data["selections"].values():
+             found_items_list.append(item)
+             total_price += (float(item.price) * item.requested_quantity)
+         
+         # Calcular completitud (Solo perfect matches cuentan)
+         found_len = len(found_items_list)
+         completeness = found_len / len(intent_items) if intent_items else 0
+         
          # Distancia
          dist_km = InventoryRepository.haversine(request.user_lat, request.user_lon, float(data["bodega"].latitude), float(data["bodega"].longitude))
 
-         response_list.append(BodegaSearchResult(# ...
+         # Preparamos contexto de negociación para esta bodega
+         negotiation_context = list(set([n["name"] for n in data["negotiations"]])) # Unique names
+         
+         # Hack: Adjuntar datos extra al objeto (aunque no esté en el schema, Python lo permite runtime, o usamos un campo hidden)
+         # Schema BodegaSearchResult no tiene 'negotiation_context'. Lo usaremos solo para el prompt aquí.
+         
+         res_obj = BodegaSearchResult(
             bodega_id=data["bodega"].id,
             name=data["bodega"].name,
             latitude=float(data["bodega"].latitude),
@@ -935,37 +978,46 @@ async def search_smart(request: SearchRequest, db: Session = Depends(get_db)):
             distance_meters=int(dist_km * 1000),
             is_open=True,
             completeness_score=completeness * 100,
-            total_price=data["total"],
-            found_items=data["items"],
+            total_price=total_price,
+            found_items=found_items_list,
             missing_items=[]
-        ))
+        )
+         
+         response_list.append(res_obj)
 
-    response_list.sort(key=lambda x: (-x.completeness_score, x.total_price))
-    
-    # Mejorar el contexto para el bot
     response_list.sort(key=lambda x: (-x.completeness_score, x.total_price))
     
     # MEJORAR CONTEXTO PARA EL BOT
     if response_list:
         top_match = response_list[0]
-        # Lista de nombres de productos encontrados en TOTAL (unique)
-        all_found = list(set(found_details))
-        summary_products = ", ".join(all_found[:10])
+        found_names = [f"{i.requested_quantity}x {i.name}" for i in top_match.found_items]
         
-        # 1. CASO IDEAL: Encontramos TODO en la mejor bodega
-        if top_match.completeness_score >= 99:
-             context_str = f"¡ÉXITO! Encontré TODO ({summary_products}) en la bodega '{top_match.name}'."
-             if len(response_list) > 1:
-                 context_str += f" También hay otras {len(response_list)-1} opciones."
+        context_str = f"Mejor opción: Bodega '{top_match.name}'.\n"
         
-        # 2. CASO PARCIAL: No hay ninguna bodega con todo junto
+        if found_names:
+            context_str += f"Precio Total del Carrito: S/ {top_match.total_price:.2f} (REFERENCIAL).\n"
+            context_str += f"Items ENCONTRADOS y AGREGADOS al carrito: {', '.join(found_names)}.\n"
+            context_str += "INSTRUCCIÓN: Si hay items ENCONTRADOS, CONFIRMA que ya están listos/agregados. NO preguntes '¿Los agrego?'. Dí 'Listo, agregué X. Sale S/ Y'."
         else:
-            context_str = f"NO encontré todo junto. Lo mejor que hallé fue '{top_match.name}' que tiene: {', '.join([i.name for i in top_match.found_items or []])}. "
-            context_str += f"Productos disponibles dispersos: {summary_products}. Avisa al usuario que tendría que pedir de dos sitios o elegir."
+            context_str += "Items ENCONTRADOS EXACTOS: NINGUNO.\n"
+            context_str += "INSTRUCCIÓN: NO DIGAS QUE AGREGASTE NADA. DI QUE NO ENCONTRASTE EL PRODUCTO EXACTO.\n"
+        
+        # FIX: Recuperar negotiations desde el mapa original usando el ID de la mejor bodega
+        # No podemos adjuntar atributos a Pydantic runtime sin config especial, mejor consultamos la fuente.
+        top_bodega_data = bodegas_map.get(top_match.bodega_id)
+        negotiation_list = []
+        if top_bodega_data and "negotiations" in top_bodega_data:
+             negotiation_list = list(set([n["name"] for n in top_bodega_data["negotiations"]]))
+            
+        if negotiation_list:
+            context_str += f"Items PARCIALES (NO AGREGADOS, SUGERIR AL USUARIO): {', '.join(negotiation_list)}.\n"
+            context_str += "INSTRUCCIÓN: Di claramente que NO hay el exacto, pero ofreces los PARCIALES como alternativa. Pregunta si quiere agregarlas."
+        
+        if top_match.completeness_score < 100 and not negotiation_list and not found_names:
+             context_str += "Faltan productos y no encontré alternativas cercanas."
 
     else:
-        context_str = "No se encontraron coinciciencias en bodegas cercanas (radio máx 0.9km). Diles que no hay cobertura tan cerca o no tienen ese producto."
-
+        context_str = "No se encontraron coinciciencias en bodegas cercanas."
     
     bot_message = await gemini_client.generate_shopkeeper_response(
         request.query, 
@@ -974,16 +1026,24 @@ async def search_smart(request: SearchRequest, db: Session = Depends(get_db)):
         avoid_greeting=avoid_greeting
     )
     
-    # --- PROCESO DE GUARDADO DE RESPUESTA DEL BOT ---
+    # LOG OUTPUT FINAL
+    print(f"📤 [OUTPUT] Bot Response: '{bot_message}'")
+    
+    # ... (Resto del guardado igual) ...
     if current_session:
         # Serializar resultados para persistencia (Recomendaciones en historial)
+        
+        # FIX: Filtrar tarjetas vacías SOLO para el frontend/DB
+        # El bot usó la lista completa (incluyendo partials vacíos), pero el UI no debe mostrar eso.
+        ui_response_list = [res for res in response_list if res.found_items]
+        
         attachment_json = None
-        if response_list:
+        if ui_response_list:
             try:
                 # Usar jsonable_encoder para manejar UUIDs, Datetimes, etc. de forma segura
                 from fastapi.encoders import jsonable_encoder
-                attachment_json = jsonable_encoder(response_list)
-                print(f"💾 [DB] Guardando {len(attachment_json)} tarjetas de productos en historial.")
+                attachment_json = jsonable_encoder(ui_response_list)
+                print(f"💾 [DB] Guardando {len(attachment_json)} tarjetas de productos en historial (Filtradas).")
             except Exception as e:
                 print(f"⚠️ Error serializando attachment: {e}")
 
@@ -991,7 +1051,7 @@ async def search_smart(request: SearchRequest, db: Session = Depends(get_db)):
             session_id=current_session.id,
             role="assistant",
             content=bot_message,
-            attachment_data=attachment_json # <--- NUEVO: Persistencia de tarjetas
+            attachment_data=attachment_json # <--- NUEVO: Persistencia de tarjetas FILTRADAS
         )
         db.add(bot_msg_db)
         
@@ -1026,9 +1086,23 @@ async def search_smart(request: SearchRequest, db: Session = Depends(get_db)):
         current_session.updated_at = func.now()
         db.commit()
 
+    # Asegurar que ui_response_list esté definida (por si no entró al bloque current_session)
+    if 'ui_response_list' not in locals():
+        ui_response_list = [res for res in response_list if res.found_items]
+
+    # LOG DE OFERTAS
+    if ui_response_list:
+        print(f"📦 [OUTPUT] Offers ({len(ui_response_list)} items):")
+        for res in ui_response_list:
+             items_str = ", ".join([i.name for i in res.found_items])
+             print(f"   - {res.name}: {items_str} (Score: {res.completeness_score:.1f}%)")
+    else:
+        print("📦 [OUTPUT] Offers: None (Active Negotiation or No Match)")
+    print("-" * 50 + "\n")
+
     return SmartSearchResponse(
         message=bot_message,
-        results=response_list,
+        results=ui_response_list, # <--- FIX: Retornar lista FILTRADA
         session_id=current_session.id if current_session else None
     )
 

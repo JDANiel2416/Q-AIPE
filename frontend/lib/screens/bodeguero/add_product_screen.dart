@@ -214,9 +214,9 @@ class _AddProductScreenState extends State<AddProductScreen> {
   }
 
   void _updateDefaultsAfterSubCat() {
-    // Resetear marca
-    _selectedBrandPredefined = null;
-    _brandCtrl.clear();
+    // YA NO Resetear marca aqui, porque borra lo que llenó la IA
+    // _selectedBrandPredefined = null;
+    // _brandCtrl.clear();
 
     // Lógica por defecto para gas
     if (_selectedCategory?.name == 'Bebidas') {
@@ -248,13 +248,23 @@ class _AddProductScreenState extends State<AddProductScreen> {
   }
 
   // Getter para nombre computado
+  // PRIORIDAD:
+  // 1. Nombre del AI/MasterProduct (ya verificado y consistente con la BD)
+  // 2. Nombre manual para categoría "Otros"
+  // 3. Nombre computado solo si el usuario NO escaneó (campo vacío)
   String get _computedName {
-    // Si elegimos un producto maestro, usar su nombre tal cual (ya verificado)
-    if (_selectedMasterId != null && _nameCtrl.text.isNotEmpty) {
+    // PRIORIDAD 1: Si tenemos un nombre del AI o Master Product, USARLO SIEMPRE
+    // Esto asegura consistencia con la BD de master_products
+    if (_nameCtrl.text.isNotEmpty) {
       return _nameCtrl.text;
     }
 
-    if (_selectedCategory?.name == 'Otros') return _nameCtrl.text;
+    // PRIORIDAD 2: Modo manual (sin escaneo) - Categoría "Otros"
+    if (_selectedCategory?.name == 'Otros') {
+      return "Ingrese nombre del producto...";
+    }
+
+    // PRIORIDAD 3: Computar nombre solo para entrada manual sin AI
     String sub = _selectedSubCategory?.name ?? '';
 
     // Usar marca predefinida si existe y no es "Otras", sino usar el campo manual
@@ -321,9 +331,15 @@ class _AddProductScreenState extends State<AddProductScreen> {
 
       if (products.length == 1) {
         // CASO 1: Un solo producto -> Populate
-        Map<String, dynamic> aiData = products[0];
-        _selectedMasterId = null;
-        _populateFromAI(aiData, null);
+        Map<String, dynamic> rawResult = products[0];
+
+        // Desempaquetar si viene anidado en ai_data (Scanner V2)
+        Map<String, dynamic> aiData = rawResult['ai_data'] ?? rawResult;
+        int? masterId = rawResult['found_master_id'];
+
+        _selectedMasterId = masterId;
+        _populateFromAI(aiData, masterId);
+
         return aiData['suggested_name'];
       } else {
         // CASO 2: Múltiples -> Pantalla de Revisión Masiva
@@ -350,18 +366,21 @@ class _AddProductScreenState extends State<AddProductScreen> {
 
   // --- HELPER PARA AUTOCOMPLETE ---
   void _fillFormFromMaster(Map<String, dynamic> masterData) {
+    print("DEBUG: _fillFormFromMaster called with: $masterData");
     setState(() {
       _selectedMasterId = masterData['id'];
     });
 
     final attrs = masterData['attributes'] ?? {};
+    print("DEBUG: masterData attributes: $attrs");
 
     Map<String, dynamic> aiFormat = {
       "suggested_name": masterData['name'],
       "product_category": masterData['category'],
       "subcategory": masterData['subcategory'],
-      "brand": attrs['marca'],
+      "brand": attrs['marca'] ?? attrs['brand'] ?? attrs['brands'],
       "volume":
+          attrs['contenido'] ??
           attrs['contenido_neto'] ??
           attrs['capacidad'] ??
           attrs['detalle'] ??
@@ -370,10 +389,12 @@ class _AddProductScreenState extends State<AddProductScreen> {
       "derived_attributes": {},
     };
 
+    print("DEBUG: constructed aiFormat: $aiFormat");
+
     _populateFromAI(aiFormat, masterData['id']);
   }
 
-  void _populateFromAI(Map<String, dynamic> data, int? masterId) {
+  Future<void> _populateFromAI(Map<String, dynamic> data, int? masterId) async {
     // data keywords: explicit keys from backend prompt
     // check gemini_service.py: suggested_name, brand, category, volume, is_alcoholic
 
@@ -411,29 +432,46 @@ class _AddProductScreenState extends State<AddProductScreen> {
       }
     }
 
-    setState(() {
-      // 2. Set Category Object
-      try {
-        _selectedCategory = _categories.firstWhere(
-          (c) => c.name.toUpperCase() == targetCatName.toUpperCase(),
-          orElse: () => _categories.first,
-        );
-      } catch (e) {
-        if (_categories.isNotEmpty) _selectedCategory = _categories.first;
-      }
+    // Identify Category Object
+    CategoryModel selectedCat;
+    try {
+      selectedCat = _categories.firstWhere(
+        (c) => c.name.toUpperCase() == targetCatName.toUpperCase(),
+        orElse: () => _categories.first,
+      );
+    } catch (e) {
+      if (_categories.isNotEmpty)
+        selectedCat = _categories.first;
+      else
+        return; // Should not happen if loaded
+    }
 
-      // 3. Set Unit Default
+    // 2. Fetch Subcategories ASYNC (Avoid Race Condition)
+    // We do NOT setState yet to avoid partial UI updates
+    setState(() => _isLoadingSubCategories = true);
+
+    List<SubCategoryModel> fetchedSubs = [];
+    try {
+      fetchedSubs = await _api.getSubCategories(selectedCat.id);
+    } catch (e) {
+      print("Error loading subcategories: $e");
+    }
+
+    if (!mounted) return;
+
+    // 3. Atomic State Update
+    setState(() {
+      _isLoadingSubCategories = false;
+      _selectedCategory = selectedCat;
+      _subCategories = fetchedSubs;
+
+      // Select Unit Default
       _selectedUnit =
           _unitsByCategory[_selectedCategory?.name]?.first ?? 'unidades';
 
-      // 4. Reset SubCat and Load Async
       _selectedSubCategory = null;
-    });
 
-    // 5. Load Subcategories Async
-    _loadSubCategories().then((_) {
-      if (!mounted) return;
-
+      // 4. Match SubCategory
       String? aiSub = (data['subcategory'] as String?);
       SubCategoryModel? matchedSub;
 
@@ -456,66 +494,61 @@ class _AddProductScreenState extends State<AddProductScreen> {
         }
       }
 
-      setState(() {
-        if (matchedSub != null) {
-          _selectedSubCategory = matchedSub;
-        } else {
-          // Default to first if available (already handled in _loadSubCategories but good to be sure)
-          if (_subCategories.isNotEmpty && _selectedSubCategory == null) {
-            _selectedSubCategory = _subCategories.first;
-          }
-        }
+      // Default SubCategory
+      if (matchedSub != null) {
+        _selectedSubCategory = matchedSub;
+      } else if (_subCategories.isNotEmpty) {
+        _selectedSubCategory = _subCategories.first;
+      }
 
-        // 6. Update dependent logic (Gas, Brand)
-        _updateDefaultsAfterSubCat();
+      // 5. Update dependent logic (Gas, Brand)
+      _updateDefaultsAfterSubCat();
 
-        // 7. Set Brand (Async part)
-        String aiBrand = (data['brand'] ?? "").toString();
-        if (aiBrand.isNotEmpty) {
-          String? subName = _selectedSubCategory?.name;
-          if (subName != null && _brandsBySubCategory.containsKey(subName)) {
-            try {
-              String matchedBrand = _brandsBySubCategory[subName]!.firstWhere(
-                (b) =>
-                    b.toUpperCase() == aiBrand.toUpperCase() ||
-                    aiBrand.toUpperCase().contains(b.toUpperCase()),
-              );
-              _selectedBrandPredefined = matchedBrand;
-              _brandCtrl.text = matchedBrand;
-            } catch (_) {
-              _selectedBrandPredefined = 'Otras';
-              _brandCtrl.text = aiBrand;
-            }
-          } else {
-            _selectedBrandPredefined = null;
+      // 6. Match Brand (Check both top-level and nested attributes for bulk scan compatibility)
+      final attrs = data['attributes'] ?? {};
+      String aiBrand = (data['brand'] ?? attrs['brand'] ?? attrs['marca'] ?? "")
+          .toString();
+      if (aiBrand.isNotEmpty) {
+        String? subName = _selectedSubCategory?.name;
+        if (subName != null && _brandsBySubCategory.containsKey(subName)) {
+          try {
+            String matchedBrand = _brandsBySubCategory[subName]!.firstWhere(
+              (b) =>
+                  b.toUpperCase() == aiBrand.toUpperCase() ||
+                  aiBrand.toUpperCase().contains(b.toUpperCase()),
+            );
+            _selectedBrandPredefined = matchedBrand;
+            _brandCtrl.text = matchedBrand;
+          } catch (_) {
+            _selectedBrandPredefined = 'Otras';
             _brandCtrl.text = aiBrand;
           }
+        } else {
+          _selectedBrandPredefined = null;
+          _brandCtrl.text = aiBrand;
         }
+      }
 
-        // 9. Granular Attributes (Moved here to run AFTER defaults reset)
-        final attrs = data['attributes'] ?? {};
+      // 7. Granular Attributes (attrs already defined above)
+      if (attrs['has_gas'] != null) _hasGas = attrs['has_gas'] == true;
+      if (attrs['is_alcoholic'] == true)
+        _hasGas = false; // Alcoholic drinks typically no gas info
+      if (attrs['sugar_free'] == true) _sugarFree = true;
+      if (attrs['lactose_free'] == true) _lactoseFree = true;
+      if (attrs['flavor'] != null)
+        _flavorCtrl.text = attrs['flavor'].toString();
 
-        // GAS logic override
-        if (attrs['has_gas'] != null) {
-          _hasGas = attrs['has_gas'] == true;
-        }
-
-        if (attrs['sugar_free'] == true) _sugarFree = true;
-        if (attrs['lactose_free'] == true) _lactoseFree = true;
-
-        if (attrs['flavor'] != null) {
-          _flavorCtrl.text = attrs['flavor'].toString();
-        }
-      });
-    });
-
-    setState(() {
-      // 8. Other Fields (Sync)
-      String volume = (data['volume'] ?? "").toString();
+      // 8. Volume Parsing (Check both top-level and nested)
+      String volume =
+          (data['volume'] ?? attrs['volume'] ?? attrs['contenido'] ?? "")
+              .toString();
       _parseVolume(volume);
 
-      // SIEMPRE guardar el nombre sugerido, para usarlo si es Master Product
+      // 9. Name
       _nameCtrl.text = data['suggested_name'] ?? "";
+
+      // Update Master ID last
+      _selectedMasterId = masterId;
     });
 
     // Feedback
@@ -533,13 +566,19 @@ class _AddProductScreenState extends State<AddProductScreen> {
   }
 
   void _parseVolume(String volStr) {
-    if (volStr.isEmpty) return;
+    print("DEBUG: _parseVolume called with: '$volStr'");
+    if (volStr.isEmpty) {
+      print("DEBUG: volStr is empty, returning");
+      return;
+    }
     final regex = RegExp(r'(\d+(\.\d+)?)\s*([a-zA-Z]+)');
     final match = regex.firstMatch(volStr);
+    print("DEBUG: regex match: $match");
 
     if (match != null) {
       String qty = match.group(1) ?? ""; // "500"
       String unit = (match.group(3) ?? "").toLowerCase(); // "ml"
+      print("DEBUG: parsed qty=$qty, unit=$unit");
 
       _contentCtrl.text = qty;
 
@@ -554,8 +593,8 @@ class _AddProductScreenState extends State<AddProductScreen> {
         _selectedUnit = "g";
 
       // Verificar que la unidad exista en la categoría actual
-      List<String> validUnits = _unitsByCategory[_selectedCategory] ?? [];
-      if (!validUnits.contains(_selectedUnit)) {
+      List<String> validUnits = _unitsByCategory[_selectedCategory?.name] ?? [];
+      if (validUnits.isNotEmpty && !validUnits.contains(_selectedUnit)) {
         _selectedUnit = validUnits.first; // Fallback
       }
     } else {

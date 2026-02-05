@@ -59,6 +59,11 @@ class Bodega(Base):
     # Estado: 'OPEN', 'CLOSED', o NULL (Auto)
     manual_override = Column(String, nullable=True) 
     rating = Column(Numeric(2, 1), default=5.0)
+    
+    # Configuración de Delivery
+    has_delivery = Column(Boolean, default=False)
+    delivery_fee = Column(Numeric(10, 2), default=3.00)  # S/
+    delivery_radius_km = Column(Numeric(4, 2), default=2.0)  # km
 
     # Relaciones
     owner = relationship("User", back_populates="bodegas")
@@ -190,6 +195,13 @@ class Reservation(Base):
     total_amount = Column(Numeric(10, 2), nullable=False)
     status = Column(String, default="PENDING") # PENDING, CONFIRMED, COMPLETED, CANCELLED
     qr_code_data = Column(String, nullable=True) # Data para generar el QR
+    
+    # Campos de Delivery
+    delivery_type = Column(String, default="PICKUP")  # PICKUP | DELIVERY
+    delivery_address_text = Column(String, nullable=True)  # "Jr. Los Pinos 123"
+    delivery_coords_encrypted = Column(String, nullable=True)  # Coords encriptadas
+    delivery_coords_expires_at = Column(TIMESTAMP, nullable=True)
+    delivery_fee = Column(Numeric(10, 2), default=0)
     
     created_at = Column(TIMESTAMP, server_default=text("now()"))
 

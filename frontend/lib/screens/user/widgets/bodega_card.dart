@@ -215,9 +215,9 @@ class BodegaCard extends StatelessWidget {
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      // --- COLUMNA IZQUIERDA: CANTIDAD ---
+                      // --- 1. CANTIDAD ---
                       Container(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 8,
@@ -238,7 +238,30 @@ class BodegaCard extends StatelessWidget {
                       ),
                       const SizedBox(width: 12),
 
-                      // --- COLUMNA CENTRAL: NOMBRE ---
+                      // --- 2. IMAGEN DEL PRODUCTO (NUEVO) ---
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: SizedBox(
+                          width: 48,
+                          height: 48,
+                          child:
+                              item.imageUrl != null && item.imageUrl!.isNotEmpty
+                              ? Image.network(
+                                  item.imageUrl!,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (context, error, stackTrace) {
+                                    return _buildFallbackIcon(
+                                      context,
+                                      item.category,
+                                    );
+                                  },
+                                )
+                              : _buildFallbackIcon(context, item.category),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+
+                      // --- 3. DETALLE ---
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -248,18 +271,27 @@ class BodegaCard extends StatelessWidget {
                               style: TextStyle(
                                 color: HomeColors.textPrimary(context),
                                 fontSize: 14,
-                                fontWeight: FontWeight.w500,
+                                fontWeight: FontWeight.w600,
                               ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
                             ),
+                            if (item.category != null)
+                              Text(
+                                item.category!,
+                                style: TextStyle(
+                                  color: HomeColors.textMuted(context),
+                                  fontSize: 10,
+                                ),
+                              ),
                           ],
                         ),
                       ),
 
-                      // --- COLUMNA DERECHA: PRECIO ---
+                      // --- 4. PRECIO ---
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
-                          // Mostramos precio unitario
                           Text(
                             "S/ ${item.price.toStringAsFixed(2)}",
                             style: TextStyle(
@@ -268,11 +300,9 @@ class BodegaCard extends StatelessWidget {
                               fontWeight: FontWeight.bold,
                             ),
                           ),
-
-                          // Si quieres mostrar el subtotal (2 * 2.50 = 5.00) opcionalmente:
                           if (item.requestedQuantity > 1)
                             Text(
-                              "Total: S/ ${(item.price * item.requestedQuantity).toStringAsFixed(2)}",
+                              "S/ ${(item.price * item.requestedQuantity).toStringAsFixed(2)}",
                               style: TextStyle(
                                 color: HomeColors.textMuted(context),
                                 fontSize: 10,
@@ -325,5 +355,45 @@ class BodegaCard extends StatelessWidget {
     });
 
     return fullName;
+  }
+
+  Widget _buildFallbackIcon(BuildContext context, String? category) {
+    // Mapas de iconos y colores por categoría
+    final iconMap = {
+      'Bebidas': Icons.local_drink,
+      'Abarrotes': Icons.shopping_basket,
+      'Limpieza': Icons.cleaning_services,
+      'Cuidado Personal': Icons.face,
+      'Snacks': Icons.fastfood,
+      'Lácteos': Icons.egg_alt, // O algo similar si no existe
+      'Frutas y Verduras': Icons.eco,
+      'Carnes': Icons.restaurant,
+      'Panadería': Icons.breakfast_dining,
+      'Licores': Icons.wine_bar,
+    };
+
+    final colorMap = {
+      'Bebidas': Colors.blue,
+      'Abarrotes': Colors.orange,
+      'Limpieza': Colors.teal,
+      'Cuidado Personal': Colors.purple,
+      'Snacks': Colors.amber,
+      'Lácteos': Colors.lightBlue,
+      'Frutas y Verduras': Colors.green,
+      'Carnes': Colors.red,
+      'Panadería': Colors.brown,
+      'Licores': Colors.indigo,
+    };
+
+    final cat = category ?? 'Otros';
+    final iconData = iconMap[cat] ?? Icons.category;
+    final baseColor = colorMap[cat] ?? Colors.grey;
+
+    return Container(
+      width: double.infinity,
+      height: double.infinity,
+      color: baseColor.withOpacity(0.15),
+      child: Icon(iconData, color: baseColor, size: 24),
+    );
   }
 }

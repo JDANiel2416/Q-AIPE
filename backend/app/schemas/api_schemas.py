@@ -31,6 +31,10 @@ class ProductItem(BaseModel):
     
     # NUEVO: La cantidad que pidió el usuario (Ej: 2, 3)
     requested_quantity: int = 1 
+    
+    # NUEVO: Datos visuales para cards
+    image_url: Optional[str] = None
+    category: Optional[str] = None
 
     class Config:
         from_attributes = True

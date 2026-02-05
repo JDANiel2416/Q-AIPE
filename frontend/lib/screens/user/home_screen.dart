@@ -22,6 +22,7 @@ import 'shared_drawer.dart'; // Import SharedDrawer
 import 'widgets/home_input_area.dart';
 import 'widgets/home_chat_view.dart';
 import 'widgets/visual_store_view.dart';
+import 'widgets/delivery_option_modal.dart';
 
 class HomeScreen extends StatefulWidget {
   final String? initialSessionId;
@@ -261,24 +262,11 @@ class _HomeScreenState extends State<HomeScreen>
   // --- LOGICA DE RESERVA Y MAPA ---
 
   Future<void> _processReservation(BodegaSearchResult bodega) async {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => Center(
-        child: CircularProgressIndicator(color: HomeColors.primary(context)),
-      ),
-    );
-
     // 1. Verificar si ya está reservado (Re-click en "Ver Ticket")
     if (_messages.isNotEmpty &&
         _messages.last.isReserved &&
         _messages.last.selectedBodegaId == bodega.bodegaId &&
         _messages.last.ticketData != null) {
-      if (mounted)
-        Navigator.of(
-          context,
-        ).pop(); // Cerrar loading si se abrió por error (o evitar abrirlo antes)
-
       Navigator.push(
         context,
         MaterialPageRoute(
@@ -288,11 +276,64 @@ class _HomeScreenState extends State<HomeScreen>
       return;
     }
 
+    // 2. Calcular subtotal
+    double subtotal = 0;
+    for (var item in bodega.foundItems) {
+      subtotal += (item as dynamic).price * (item as dynamic).requestedQuantity;
+    }
+
+    // 3. Obtener config de delivery de la bodega
+    Map<String, dynamic> deliverySettings = {};
+    try {
+      deliverySettings = await _apiService.getDeliverySettings(bodega.bodegaId);
+      print("📦 [DELIVERY] Settings for ${bodega.name}: $deliverySettings");
+    } catch (e) {
+      print("❌ [DELIVERY] Error: $e");
+    }
+
+    final hasDelivery = deliverySettings['has_delivery'] ?? false;
+    final deliveryFee = (deliverySettings['delivery_fee'] ?? 3.0).toDouble();
+    final deliveryRadius = (deliverySettings['delivery_radius_km'] ?? 2.0)
+        .toDouble();
+
+    // 4. Mostrar modal de opción de delivery
+    final DeliveryOptionResult? deliveryOption =
+        await showModalBottomSheet<DeliveryOptionResult>(
+          context: context,
+          isScrollControlled: true,
+          backgroundColor: Colors.transparent,
+          builder: (context) => DeliveryOptionModal(
+            bodegaName: bodega.name,
+            hasDelivery: hasDelivery,
+            deliveryFee: deliveryFee,
+            deliveryRadius: deliveryRadius,
+            subtotal: subtotal,
+            userLat: _userLocation.latitude,
+            userLng: _userLocation.longitude,
+          ),
+        );
+
+    // Si el usuario canceló, no continuar
+    if (deliveryOption == null) return;
+
+    // 5. Mostrar loading
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => Center(
+        child: CircularProgressIndicator(color: HomeColors.primary(context)),
+      ),
+    );
+
     try {
       final response = await _apiService.createReservation(
         _currentUserId ?? "",
         bodega.bodegaId,
         bodega.foundItems,
+        deliveryType: deliveryOption.deliveryType,
+        deliveryAddress: deliveryOption.address,
+        deliveryLat: deliveryOption.lat,
+        deliveryLng: deliveryOption.lng,
       );
       if (mounted) Navigator.of(context).pop();
       if (response['success'] == true && mounted) {
@@ -359,7 +400,78 @@ class _HomeScreenState extends State<HomeScreen>
       return;
     }
 
-    // 2. Mostrar loading
+    // 1b. Verificar si ya está reservado (Re-click en "Ver Ticket")
+    if (_messages.isNotEmpty &&
+        _messages.last.isReserved &&
+        bodegas.length == 1 &&
+        _messages.last.selectedBodegaId == bodegas.first.bodegaId &&
+        _messages.last.ticketData != null) {
+      if (mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) =>
+                TicketScreen(ticketData: _messages.last.ticketData!),
+          ),
+        );
+      }
+      return;
+    }
+
+    // 2. Calcular subtotal para mostrar en modal
+    double subtotal = 0;
+    for (var bodega in bodegas) {
+      for (var item in bodega.foundItems) {
+        subtotal +=
+            (item as dynamic).price * (item as dynamic).requestedQuantity;
+      }
+    }
+
+    // 3. Obtener info de delivery de la primera bodega (para simplificar)
+    // TODO: Si hay múltiples bodegas, habría que manejar delivery por separado
+    final firstBodega = bodegas.first;
+    Map<String, dynamic> deliverySettings = {};
+    try {
+      deliverySettings = await _apiService.getDeliverySettings(
+        firstBodega.bodegaId,
+      );
+      print(
+        "📦 [DELIVERY] Settings for ${firstBodega.name}: $deliverySettings",
+      );
+    } catch (e) {
+      print("❌ [DELIVERY] Error getting delivery settings: $e");
+    }
+
+    final hasDelivery = deliverySettings['has_delivery'] ?? false;
+    final deliveryFee = (deliverySettings['delivery_fee'] ?? 3.0).toDouble();
+    final deliveryRadius = (deliverySettings['delivery_radius_km'] ?? 2.0)
+        .toDouble();
+
+    print(
+      "📦 [DELIVERY] Has delivery: $hasDelivery, Fee: $deliveryFee, Radius: $deliveryRadius",
+    );
+
+    // 4. Mostrar modal de opción de delivery
+    final DeliveryOptionResult? deliveryOption =
+        await showModalBottomSheet<DeliveryOptionResult>(
+          context: context,
+          isScrollControlled: true,
+          backgroundColor: Colors.transparent,
+          builder: (context) => DeliveryOptionModal(
+            bodegaName: firstBodega.name,
+            hasDelivery: hasDelivery,
+            deliveryFee: deliveryFee,
+            deliveryRadius: deliveryRadius,
+            subtotal: subtotal,
+            userLat: _userLocation.latitude,
+            userLng: _userLocation.longitude,
+          ),
+        );
+
+    // Si el usuario canceló, no continuar
+    if (deliveryOption == null) return;
+
+    // 5. Mostrar loading
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -385,33 +497,17 @@ class _HomeScreenState extends State<HomeScreen>
     String? firstError;
     String userName = "Usuario";
 
-    // 1. Verificar si este intento viene de un mensaje YA reservado (Re-click en "Ver Ticket")
-    // Esto es un poco hacky: verificamos si el último mensaje ya tiene datos
-    if (_messages.isNotEmpty &&
-        _messages.last.isReserved &&
-        bodegas.length == 1 &&
-        _messages.last.selectedBodegaId == bodegas.first.bodegaId &&
-        _messages.last.ticketData != null) {
-      // Navegación directa
-      if (mounted) {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) =>
-                TicketScreen(ticketData: _messages.last.ticketData!),
-          ),
-        );
-      }
-      return;
-    }
-
     try {
-      // 3. Loop: Crear reserva por cada bodega
+      // 6. Loop: Crear reserva por cada bodega
       for (var bodega in bodegas) {
         final response = await _apiService.createReservation(
           _currentUserId!,
           bodega.bodegaId,
           bodega.foundItems,
+          deliveryType: deliveryOption.deliveryType,
+          deliveryAddress: deliveryOption.address,
+          deliveryLat: deliveryOption.lat,
+          deliveryLng: deliveryOption.lng,
         );
 
         if (response['success'] == true) {
@@ -798,6 +894,10 @@ class _HomeScreenState extends State<HomeScreen>
                                   setState(() => msg.isAnimated = true);
                                 },
                                 onViewTicket: _navigateToTicket,
+                                onRemoveItem: (itemName) {
+                                  // Enviar mensaje invisible o visible para que el bot procese la baja
+                                  _handleSubmitted("Quita $itemName");
+                                },
                               )
                             : VisualStoreView(
                                 userLocation: _userLocation,

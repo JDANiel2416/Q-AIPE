@@ -42,8 +42,13 @@ class _BulkReviewScreenState extends State<BulkReviewScreen> {
     // Initial item setup
     _validProducts = widget.products
         .where((p) => (p['suggested_name'] ?? '').toString().isNotEmpty)
-        .map((p) {
-          final item = Map<String, dynamic>.from(p);
+        .map((raw) {
+          // Desempaquetar ai_data si existe
+          final Map<String, dynamic> aiData = raw['ai_data'] ?? raw;
+          final int? masterId = raw['found_master_id'];
+
+          final item = Map<String, dynamic>.from(aiData);
+          item['master_product_id'] = masterId; // Persistir ID maestro
 
           // Normalizar string category (Legacy fallback)
           String catName = (item['category'] ?? '').toString().toUpperCase();
@@ -221,6 +226,7 @@ class _BulkReviewScreenState extends State<BulkReviewScreen> {
         name: name,
         category: categoryName,
         subCategoryId: subCatId,
+        masterProductId: p['master_product_id'], // NUEVO
         price: price,
         stock: stock,
         attributes: attributes,

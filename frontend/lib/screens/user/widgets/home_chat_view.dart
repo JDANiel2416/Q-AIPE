@@ -17,8 +17,8 @@ class HomeChatView extends StatelessWidget {
   final Function(BodegaSearchResult) onReserve;
   final Function(List<BodegaSearchResult>)? onConfirmOrder;
   final Function(ChatMessage) onCompleteTyping;
-  final Function(Map<String, dynamic>)?
-  onViewTicket; // Callback para navegar al ticket
+  final Function(Map<String, dynamic>)? onViewTicket;
+  final Function(String)? onRemoveItem; // Nuevo callback
 
   const HomeChatView({
     super.key,
@@ -32,6 +32,7 @@ class HomeChatView extends StatelessWidget {
     this.onConfirmOrder,
     required this.onCompleteTyping,
     this.onViewTicket,
+    this.onRemoveItem,
   });
 
   @override
@@ -213,6 +214,7 @@ class HomeChatView extends StatelessWidget {
         onChangeSelection: onViewMap,
         isReserved: msg.isReserved,
         onViewTicket: () => onViewTicket?.call(msg.ticketData ?? {}),
+        onRemoveItem: onRemoveItem, // Pasamos el callback
       );
     } else {
       // Bot response - flat LLM style

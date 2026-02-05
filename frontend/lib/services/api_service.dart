@@ -668,8 +668,12 @@ class ApiService {
   Future<Map<String, dynamic>> createReservation(
     String userId,
     String bodegaId,
-    List<dynamic> items,
-  ) async {
+    List<dynamic> items, {
+    String deliveryType = "PICKUP",
+    String? deliveryAddress,
+    double? deliveryLat,
+    double? deliveryLng,
+  }) async {
     final url = Uri.parse('$baseUrl/reservations/create');
 
     // Transformamos los items al formato que espera el backend
@@ -688,15 +692,23 @@ class ApiService {
       };
     }).toList();
 
+    // Construir body con campos de delivery
+    final body = {
+      "user_id": userId,
+      "bodega_id": bodegaId,
+      "items": formattedItems,
+      "delivery_type": deliveryType,
+    };
+
+    if (deliveryAddress != null) body["delivery_address"] = deliveryAddress;
+    if (deliveryLat != null) body["delivery_lat"] = deliveryLat;
+    if (deliveryLng != null) body["delivery_lng"] = deliveryLng;
+
     try {
       final response = await http.post(
         url,
         headers: {"Content-Type": "application/json"},
-        body: jsonEncode({
-          "user_id": userId,
-          "bodega_id": bodegaId,
-          "items": formattedItems,
-        }),
+        body: jsonEncode(body),
       );
 
       final data = jsonDecode(utf8.decode(response.bodyBytes));
@@ -1064,6 +1076,86 @@ class ApiService {
     } catch (e) {
       print("Error fetching search categories: $e");
       return [];
+    }
+  }
+
+  // ============================================================
+  // DELIVERY SETTINGS API
+  // ============================================================
+
+  /// Obtener configuración de delivery de una bodega
+  Future<Map<String, dynamic>> getDeliverySettings(String bodegaId) async {
+    final url = Uri.parse(
+      '$baseUrl/bodeguero/bodega/$bodegaId/delivery-settings',
+    );
+    try {
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        return jsonDecode(utf8.decode(response.bodyBytes));
+      }
+      return {
+        'has_delivery': false,
+        'delivery_fee': 3.00,
+        'delivery_radius_km': 2.0,
+      };
+    } catch (e) {
+      print("Error fetching delivery settings: $e");
+      return {
+        'has_delivery': false,
+        'delivery_fee': 3.00,
+        'delivery_radius_km': 2.0,
+      };
+    }
+  }
+
+  /// Actualizar configuración de delivery de una bodega
+  Future<Map<String, dynamic>> updateDeliverySettings(
+    String bodegaId,
+    bool hasDelivery,
+    double deliveryFee,
+    double deliveryRadiusKm,
+  ) async {
+    final url = Uri.parse(
+      '$baseUrl/bodeguero/bodega/$bodegaId/delivery-settings',
+    );
+    try {
+      final response = await http.put(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'has_delivery': hasDelivery,
+          'delivery_fee': deliveryFee,
+          'delivery_radius_km': deliveryRadiusKm,
+        }),
+      );
+      if (response.statusCode == 200) {
+        return jsonDecode(utf8.decode(response.bodyBytes));
+      }
+      return {'success': false, 'message': 'Error updating settings'};
+    } catch (e) {
+      print("Error updating delivery settings: $e");
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  /// Verificar si una ubicación está en el rango de delivery
+  Future<Map<String, dynamic>> checkDeliveryCoverage(
+    String bodegaId,
+    double userLat,
+    double userLng,
+  ) async {
+    final url = Uri.parse(
+      '$baseUrl/bodeguero/delivery/check-coverage?bodega_id=$bodegaId&user_lat=$userLat&user_lng=$userLng',
+    );
+    try {
+      final response = await http.post(url);
+      if (response.statusCode == 200) {
+        return jsonDecode(utf8.decode(response.bodyBytes));
+      }
+      return {'in_range': false, 'reason': 'Error checking coverage'};
+    } catch (e) {
+      print("Error checking delivery coverage: $e");
+      return {'in_range': false, 'reason': e.toString()};
     }
   }
 }

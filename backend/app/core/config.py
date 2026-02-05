@@ -1,4 +1,4 @@
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     # 1. Definimos qué variables esperamos (Python validará que existan)
@@ -22,9 +22,7 @@ class Settings(BaseSettings):
     ENCRYPTION_KEY: str
 
     # Configuración para leer el archivo .env automáticamente
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
+    model_config = SettingsConfigDict(env_file=".env", case_sensitive=True)
 
 # 2. Instanciamos la clase para usarla en todo el proyecto
 settings = Settings()

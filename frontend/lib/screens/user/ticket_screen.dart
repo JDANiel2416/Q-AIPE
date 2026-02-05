@@ -82,6 +82,43 @@ class TicketScreen extends StatelessWidget {
                   ..._buildGroupedItems(context, items),
 
                   Divider(height: 40, color: HomeColors.divider(context)),
+
+                  // Delivery Fee Breakdown
+                  if ((ticketData['delivery_fee'] ?? 0) > 0)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.delivery_dining,
+                                size: 16,
+                                color: HomeColors.textSecondary(context),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                "Delivery",
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: HomeColors.textSecondary(context),
+                                ),
+                              ),
+                            ],
+                          ),
+                          Text(
+                            "S/${(ticketData['delivery_fee'] ?? 0).toStringAsFixed(2)}",
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: HomeColors.textSecondary(context),
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [

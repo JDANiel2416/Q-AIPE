@@ -39,6 +39,12 @@ class ProfileUpdateRequest(BaseModel):
 class BodegaStatusUpdate(BaseModel):
     is_open: bool
 
+# NUEVO: Esquema para configuración de delivery
+class DeliverySettingsUpdate(BaseModel):
+    has_delivery: bool
+    delivery_fee: float = 3.00
+    delivery_radius_km: float = 2.0
+
 
 router = APIRouter()
 
@@ -353,6 +359,7 @@ def get_profile(user_id: str, db: Session = Depends(get_db)):
 
     return {
         "user_id": str(user.id),
+        "bodega_id": str(bodega.id) if bodega else None,  # Needed for delivery settings
         "full_name": decrypt_value(user.full_name) or "",
         "email": decrypt_value(user.email) or "",
         "phone_number": decrypt_value(user.phone_number) or "",
@@ -476,13 +483,37 @@ def get_orders(user_id: str, db: Session = Depends(get_db)):
             for item in order.items
         ]
 
+        # Delivery info
+        delivery_lat = None
+        delivery_lng = None
+        
+        if order.delivery_coords_encrypted and order.delivery_type == "DELIVERY":
+             # Aquí podríamos desencriptar, pero para la LISTA quizás es pesado desencriptar TODOS.
+             # Sin embargo, si OrderDetailScreen usa estos datos, los necesitamos.
+             # Para optimizar, desencriptamos. Son pocos items paginados o limitados.
+            from datetime import datetime
+            if order.delivery_coords_expires_at and order.delivery_coords_expires_at > datetime.utcnow():
+                try:
+                    coords_str = decrypt_value(order.delivery_coords_encrypted)
+                    if coords_str and "," in coords_str:
+                        lat_str, lng_str = coords_str.split(",")
+                        delivery_lat = float(lat_str)
+                        delivery_lng = float(lng_str)
+                except:
+                    pass
+
         result.append({
             "id": str(order.id),
             "created_at": order.created_at.isoformat(),
             "client_name": format_public_name(decrypt_value(order.user.full_name)) if order.user else "Cliente Anónimo",
             "total_amount": float(order.total_amount),
             "status": order.status,
-            "items": items_data
+            "items": items_data,
+            "delivery_type": order.delivery_type or "PICKUP",
+            "delivery_address": order.delivery_address_text,
+            "delivery_lat": delivery_lat,
+            "delivery_lng": delivery_lng,
+            "delivery_fee": float(order.delivery_fee) if order.delivery_fee else 0.0
         })
 
     return result
@@ -506,13 +537,38 @@ def get_order_by_id(order_id: str, db: Session = Depends(get_db)):
         for item in order.items
     ]
     
+    # Delivery info
+    delivery_lat = None
+    delivery_lng = None
+    
+    # Desencriptar coords si existen y no han expirado
+    if order.delivery_coords_encrypted and order.delivery_type == "DELIVERY":
+        from datetime import datetime
+        if order.delivery_coords_expires_at and order.delivery_coords_expires_at > datetime.utcnow():
+            try:
+                coords_str = decrypt_value(order.delivery_coords_encrypted)
+                if coords_str and "," in coords_str:
+                    lat_str, lng_str = coords_str.split(",")
+                    delivery_lat = float(lat_str)
+                    delivery_lng = float(lng_str)
+            except Exception as e:
+                print(f"Error decrypting coords: {e}")
+    
+    print(f"📦 [GET_ORDER] ID: {order_id}, Type: {order.delivery_type}, Addr: {order.delivery_address_text}")
+    
     return {
         "id": str(order.id),
         "created_at": order.created_at.isoformat(),
         "client_name": format_public_name(decrypt_value(order.user.full_name)) if order.user else "Cliente Anónimo",
         "total_amount": float(order.total_amount),
         "status": order.status,
-        "items": items_data
+        "items": items_data,
+        # Delivery fields
+        "delivery_type": order.delivery_type or "PICKUP",
+        "delivery_address": order.delivery_address_text,
+        "delivery_lat": delivery_lat,
+        "delivery_lng": delivery_lng,
+        "delivery_fee": float(order.delivery_fee) if order.delivery_fee else 0.0
     }
 
 class OrderStatusUpdate(BaseModel):
@@ -941,3 +997,102 @@ async def scan_bulk_products(
     )
     
     return {"products": products}
+
+
+# ============================================================
+# DELIVERY ENDPOINTS
+# ============================================================
+
+@router.put("/bodega/{bodega_id}/delivery-settings")
+def update_delivery_settings(
+    bodega_id: str,
+    data: DeliverySettingsUpdate,
+    db: Session = Depends(get_db)
+):
+    """
+    Configura los ajustes de delivery de una bodega.
+    """
+    bodega = db.query(Bodega).filter(Bodega.id == bodega_id).first()
+    if not bodega:
+        raise HTTPException(status_code=404, detail="Bodega no encontrada")
+    
+    bodega.has_delivery = data.has_delivery
+    bodega.delivery_fee = data.delivery_fee
+    bodega.delivery_radius_km = data.delivery_radius_km
+    
+    db.commit()
+    
+    return {
+        "success": True,
+        "message": "Configuración de delivery actualizada",
+        "has_delivery": bodega.has_delivery,
+        "delivery_fee": float(bodega.delivery_fee),
+        "delivery_radius_km": float(bodega.delivery_radius_km)
+    }
+
+@router.get("/bodega/{bodega_id}/delivery-settings")
+def get_delivery_settings(
+    bodega_id: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Obtiene los ajustes de delivery de una bodega.
+    """
+    bodega = db.query(Bodega).filter(Bodega.id == bodega_id).first()
+    if not bodega:
+        raise HTTPException(status_code=404, detail="Bodega no encontrada")
+    
+    return {
+        "has_delivery": bodega.has_delivery or False,
+        "delivery_fee": float(bodega.delivery_fee) if bodega.delivery_fee else 3.00,
+        "delivery_radius_km": float(bodega.delivery_radius_km) if bodega.delivery_radius_km else 2.0
+    }
+
+@router.post("/delivery/check-coverage")
+def check_delivery_coverage(
+    bodega_id: str,
+    user_lat: float,
+    user_lng: float,
+    db: Session = Depends(get_db)
+):
+    """
+    Verifica si una ubicación está dentro del radio de delivery de una bodega.
+    Usa la fórmula de Haversine para calcular distancia.
+    """
+    from math import radians, cos, sin, asin, sqrt
+    
+    bodega = db.query(Bodega).filter(Bodega.id == bodega_id).first()
+    if not bodega:
+        raise HTTPException(status_code=404, detail="Bodega no encontrada")
+    
+    if not bodega.has_delivery:
+        return {
+            "in_range": False,
+            "reason": "Esta bodega no ofrece delivery"
+        }
+    
+    # Haversine formula
+    def haversine(lat1, lon1, lat2, lon2):
+        R = 6371  # Radio de la Tierra en km
+        lat1, lon1, lat2, lon2 = map(radians, [lat1, lon1, lat2, lon2])
+        dlat = lat2 - lat1
+        dlon = lon2 - lon1
+        a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2
+        c = 2 * asin(sqrt(a))
+        return R * c
+    
+    bodega_lat = float(bodega.latitude)
+    bodega_lng = float(bodega.longitude)
+    
+    distance_km = haversine(bodega_lat, bodega_lng, user_lat, user_lng)
+    delivery_radius = float(bodega.delivery_radius_km) if bodega.delivery_radius_km else 2.0
+    
+    in_range = distance_km <= delivery_radius
+    
+    return {
+        "in_range": in_range,
+        "distance_km": round(distance_km, 2),
+        "delivery_radius_km": delivery_radius,
+        "delivery_fee": float(bodega.delivery_fee) if bodega.delivery_fee else 3.00,
+        "reason": None if in_range else f"Distancia ({round(distance_km, 1)} km) excede el radio de cobertura ({delivery_radius} km)"
+    }

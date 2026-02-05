@@ -1,16 +1,18 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
 import 'package:intl/intl.dart';
 import 'package:flutter/services.dart';
 import 'dart:ui';
 import '../../services/api_service.dart';
 import '../../services/session_service.dart';
+import '../../services/push_notification_service.dart';
 import 'order_detail_screen.dart';
 
 import 'bodeguero_colors.dart';
 
 class OrdersScreen extends StatefulWidget {
   final bool isEmbedded;
-  
+
   const OrdersScreen({Key? key, this.isEmbedded = false}) : super(key: key);
 
   @override
@@ -21,18 +23,24 @@ class _OrdersScreenState extends State<OrdersScreen> {
   final ApiService _api = ApiService();
   List<dynamic> _orders = [];
   bool _isLoading = true;
-  
+
   // PageView y barra líquida
   late final PageController _pageController;
   late final ValueNotifier<double> _pillPositionNotifier;
   int _currentTabIndex = 0;
   bool _isDraggingBar = false;
-  
+
   // Categorías de pedidos
   final List<Map<String, dynamic>> _tabs = [
-    {'name': 'Pendientes', 'icon': Icons.pending_actions_outlined, 'filter': 'PENDING'},
+    {
+      'name': 'Pendientes',
+      'icon': Icons.pending_actions_outlined,
+      'filter': 'PENDING',
+    },
     {'name': 'Historial', 'icon': Icons.history_outlined, 'filter': 'HISTORY'},
   ];
+
+  StreamSubscription? _orderSubscription;
 
   @override
   void initState() {
@@ -45,15 +53,26 @@ class _OrdersScreenState extends State<OrdersScreen> {
         systemNavigationBarIconBrightness: Brightness.dark,
       ),
     );
-    
+
     _pageController = PageController();
     _pillPositionNotifier = ValueNotifier<double>(0.0);
     _pageController.addListener(_handlePageScroll);
     _loadOrders();
+
+    // Escuchar notificaciones en tiempo real para actualizar la lista
+    _orderSubscription = PushNotificationService().onOrderEvent.listen((event) {
+      if (event['type'] == 'NEW_ORDER') {
+        print(
+          "🔔 [OrdersScreen] Nuevo pedido detectado, actualizando lista...",
+        );
+        _loadOrders();
+      }
+    });
   }
 
   @override
   void dispose() {
+    _orderSubscription?.cancel();
     _pageController.removeListener(_handlePageScroll);
     _pageController.dispose();
     _pillPositionNotifier.dispose();
@@ -62,9 +81,9 @@ class _OrdersScreenState extends State<OrdersScreen> {
 
   void _handlePageScroll() {
     if (!_pageController.hasClients) return;
-    
+
     final pageValue = _pageController.page ?? 0.0;
-    
+
     if (!_isDraggingBar) {
       _pillPositionNotifier.value = pageValue;
     }
@@ -105,21 +124,31 @@ class _OrdersScreenState extends State<OrdersScreen> {
 
   Color _getStatusColor(String status) {
     switch (status) {
-      case 'PENDING': return BColors.warning;
-      case 'PAID': return BColors.success;
-      case 'CREDIT': return BColors.primary(context);
-      case 'CANCELLED': return BColors.error;
-      default: return BColors.textMuted(context);
+      case 'PENDING':
+        return BColors.warning;
+      case 'PAID':
+        return BColors.success;
+      case 'CREDIT':
+        return BColors.primary(context);
+      case 'CANCELLED':
+        return BColors.error;
+      default:
+        return BColors.textMuted(context);
     }
   }
 
   String _getStatusText(String status) {
     switch (status) {
-      case 'PENDING': return 'Pendiente';
-      case 'PAID': return 'Pagado';
-      case 'CREDIT': return 'Fiado';
-      case 'CANCELLED': return 'Cancelado';
-      default: return status;
+      case 'PENDING':
+        return 'Pendiente';
+      case 'PAID':
+        return 'Pagado';
+      case 'CREDIT':
+        return 'Fiado';
+      case 'CANCELLED':
+        return 'Cancelado';
+      default:
+        return status;
     }
   }
 
@@ -134,7 +163,11 @@ class _OrdersScreenState extends State<OrdersScreen> {
             if (!_isLoading) _buildGlassCategoryBar(),
             Expanded(
               child: _isLoading
-                  ? Center(child: CircularProgressIndicator(color: BColors.primary(context)))
+                  ? Center(
+                      child: CircularProgressIndicator(
+                        color: BColors.primary(context),
+                      ),
+                    )
                   : PageView(
                       controller: _pageController,
                       children: _tabs.map((tab) {
@@ -163,7 +196,11 @@ class _OrdersScreenState extends State<OrdersScreen> {
                   color: BColors.primaryLight(context).withOpacity(0.7),
                   shape: BoxShape.circle,
                 ),
-                child: Icon(Icons.arrow_back_ios_new, color: BColors.primary(context), size: 18),
+                child: Icon(
+                  Icons.arrow_back_ios_new,
+                  color: BColors.primary(context),
+                  size: 18,
+                ),
               ),
             ),
             const SizedBox(width: 16),
@@ -182,7 +219,10 @@ class _OrdersScreenState extends State<OrdersScreen> {
                 ),
                 Text(
                   "${_orders.length} pedidos totales",
-                  style: TextStyle(color: BColors.textSecondary(context), fontSize: 13),
+                  style: TextStyle(
+                    color: BColors.textSecondary(context),
+                    fontSize: 13,
+                  ),
                 ),
               ],
             ),
@@ -242,7 +282,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
               builder: (context, constraints) {
                 final double totalWidth = constraints.maxWidth;
                 final double itemWidth = totalWidth / _tabs.length;
-                
+
                 return GestureDetector(
                   onHorizontalDragStart: (_) {
                     setState(() {
@@ -253,14 +293,16 @@ class _OrdersScreenState extends State<OrdersScreen> {
                     final delta = details.primaryDelta ?? 0;
                     if (delta != 0 && _pageController.hasClients) {
                       final double deltaIndex = delta / itemWidth;
-                      double targetPage = _pillPositionNotifier.value + deltaIndex;
+                      double targetPage =
+                          _pillPositionNotifier.value + deltaIndex;
                       targetPage = targetPage.clamp(0.0, _tabs.length - 1.0);
-                      
+
                       _pillPositionNotifier.value = targetPage;
-                      
-                      final double viewportWidth = _pageController.position.viewportDimension;
+
+                      final double viewportWidth =
+                          _pageController.position.viewportDimension;
                       final double targetPixels = targetPage * viewportWidth;
-                      
+
                       _pageController.jumpTo(targetPixels);
                     }
                   },
@@ -282,7 +324,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
                         valueListenable: _pillPositionNotifier,
                         builder: (context, position, child) {
                           final leftOffset = position * itemWidth;
-                          
+
                           return Positioned(
                             left: leftOffset,
                             top: 0,
@@ -291,14 +333,19 @@ class _OrdersScreenState extends State<OrdersScreen> {
                             child: Container(
                               decoration: BoxDecoration(
                                 gradient: LinearGradient(
-                                  colors: [BColors.primary(context), BColors.primaryDark(context)],
+                                  colors: [
+                                    BColors.primary(context),
+                                    BColors.primaryDark(context),
+                                  ],
                                   begin: Alignment.topLeft,
                                   end: Alignment.bottomRight,
                                 ),
                                 borderRadius: BorderRadius.circular(30),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: BColors.primary(context).withOpacity(0.4),
+                                    color: BColors.primary(
+                                      context,
+                                    ).withOpacity(0.4),
                                     blurRadius: 12,
                                     offset: const Offset(0, 4),
                                   ),
@@ -308,14 +355,14 @@ class _OrdersScreenState extends State<OrdersScreen> {
                           );
                         },
                       ),
-                      
+
                       // Items de tabs
                       Row(
                         children: _tabs.asMap().entries.map((entry) {
                           final index = entry.key;
                           final tab = entry.value;
                           final count = _getOrderCount(tab['filter']);
-                          
+
                           return Expanded(
                             child: GestureDetector(
                               onTap: () {
@@ -330,33 +377,48 @@ class _OrdersScreenState extends State<OrdersScreen> {
                                 valueListenable: _pillPositionNotifier,
                                 builder: (context, position, child) {
                                   final isActive = position.round() == index;
-                                  final color = isActive ? Colors.white : BColors.textSecondary(context);
+                                  final color = isActive
+                                      ? Colors.white
+                                      : BColors.textSecondary(context);
 
                                   return Column(
                                     mainAxisAlignment: MainAxisAlignment.center,
                                     children: [
                                       Row(
-                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
                                         children: [
                                           Icon(
                                             tab['icon'],
                                             size: 20,
                                             color: color,
                                           ),
-                                          if (count > 0 && tab['filter'] == 'PENDING') ...[
+                                          if (count > 0 &&
+                                              tab['filter'] == 'PENDING') ...[
                                             const SizedBox(width: 6),
                                             Container(
-                                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 6,
+                                                    vertical: 2,
+                                                  ),
                                               decoration: BoxDecoration(
-                                                color: isActive ? Colors.white.withOpacity(0.2) : BColors.warning,
-                                                borderRadius: BorderRadius.circular(10),
+                                                color: isActive
+                                                    ? Colors.white.withOpacity(
+                                                        0.2,
+                                                      )
+                                                    : BColors.warning,
+                                                borderRadius:
+                                                    BorderRadius.circular(10),
                                               ),
                                               child: Text(
                                                 '$count',
                                                 style: TextStyle(
                                                   fontSize: 10,
                                                   fontWeight: FontWeight.bold,
-                                                  color: isActive ? Colors.white : Colors.white,
+                                                  color: isActive
+                                                      ? Colors.white
+                                                      : Colors.white,
                                                 ),
                                               ),
                                             ),
@@ -368,7 +430,9 @@ class _OrdersScreenState extends State<OrdersScreen> {
                                         tab['name'],
                                         style: TextStyle(
                                           fontSize: 11,
-                                          fontWeight: isActive ? FontWeight.bold : FontWeight.w500,
+                                          fontWeight: isActive
+                                              ? FontWeight.bold
+                                              : FontWeight.w500,
                                           color: color,
                                         ),
                                         maxLines: 1,
@@ -395,7 +459,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
 
   Widget _buildOrdersView(String filter) {
     final orders = _getFilteredOrders(filter);
-    
+
     if (orders.isEmpty) {
       return _buildEmptyState(filter);
     }
@@ -427,9 +491,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
       onTap: () async {
         final result = await Navigator.push(
           context,
-          MaterialPageRoute(
-            builder: (_) => OrderDetailScreen(order: order),
-          ),
+          MaterialPageRoute(builder: (_) => OrderDetailScreen(order: order)),
         );
         if (result == true) {
           _loadOrders();
@@ -461,7 +523,11 @@ class _OrdersScreenState extends State<OrdersScreen> {
                     color: BColors.primaryLight(context),
                     borderRadius: BorderRadius.circular(14),
                   ),
-                  child: Icon(Icons.person_outline, color: BColors.primary(context), size: 24),
+                  child: Icon(
+                    Icons.person_outline,
+                    color: BColors.primary(context),
+                    size: 24,
+                  ),
                 ),
                 const SizedBox(width: 16),
                 Expanded(
@@ -479,7 +545,11 @@ class _OrdersScreenState extends State<OrdersScreen> {
                       const SizedBox(height: 4),
                       Row(
                         children: [
-                          Icon(Icons.access_time, size: 12, color: BColors.textSecondary(context)),
+                          Icon(
+                            Icons.access_time,
+                            size: 12,
+                            color: BColors.textSecondary(context),
+                          ),
                           const SizedBox(width: 4),
                           Text(
                             formattedDate,
@@ -493,8 +563,26 @@ class _OrdersScreenState extends State<OrdersScreen> {
                     ],
                   ),
                 ),
+                if (order['delivery_type'] == 'DELIVERY') ...[
+                  Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.withOpacity(0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.delivery_dining,
+                      size: 14,
+                      color: Colors.orange,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                ],
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
                   decoration: BoxDecoration(
                     color: statusColor.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(20),
@@ -553,14 +641,16 @@ class _OrdersScreenState extends State<OrdersScreen> {
               color: BColors.primaryLight(context),
             ),
             child: Icon(
-              filter == 'PENDING' ? Icons.pending_actions_outlined : Icons.history_outlined,
+              filter == 'PENDING'
+                  ? Icons.pending_actions_outlined
+                  : Icons.history_outlined,
               size: 50,
               color: BColors.primary(context),
             ),
           ),
           const SizedBox(height: 24),
           Text(
-            filter == 'PENDING' 
+            filter == 'PENDING'
                 ? "No hay pedidos pendientes"
                 : "No hay pedidos en el historial",
             style: TextStyle(
@@ -574,7 +664,10 @@ class _OrdersScreenState extends State<OrdersScreen> {
             filter == 'PENDING'
                 ? "¡Los pedidos nuevos aparecerán aquí!"
                 : "Los pedidos completados se mostrarán aquí",
-            style: TextStyle(color: BColors.textSecondary(context), fontSize: 14),
+            style: TextStyle(
+              color: BColors.textSecondary(context),
+              fontSize: 14,
+            ),
           ),
         ],
       ),
