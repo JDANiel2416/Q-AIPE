@@ -16,10 +16,10 @@ class OrdersScreen extends StatefulWidget {
   const OrdersScreen({Key? key, this.isEmbedded = false}) : super(key: key);
 
   @override
-  State<OrdersScreen> createState() => _OrdersScreenState();
+  State<OrdersScreen> createState() => OrdersScreenState();
 }
 
-class _OrdersScreenState extends State<OrdersScreen> {
+class OrdersScreenState extends State<OrdersScreen> {
   final ApiService _api = ApiService();
   List<dynamic> _orders = [];
   bool _isLoading = true;
@@ -42,6 +42,8 @@ class _OrdersScreenState extends State<OrdersScreen> {
 
   StreamSubscription? _orderSubscription;
 
+  Timer? _refreshTimer;
+
   @override
   void initState() {
     super.initState();
@@ -59,6 +61,11 @@ class _OrdersScreenState extends State<OrdersScreen> {
     _pageController.addListener(_handlePageScroll);
     _loadOrders();
 
+    // Auto-refresh every 5 seconds
+    _refreshTimer = Timer.periodic(Duration(seconds: 5), (_) {
+      if (mounted) _loadOrders(silent: true);
+    });
+
     // Escuchar notificaciones en tiempo real para actualizar la lista
     _orderSubscription = PushNotificationService().onOrderEvent.listen((event) {
       if (event['type'] == 'NEW_ORDER') {
@@ -72,6 +79,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
 
   @override
   void dispose() {
+    _refreshTimer?.cancel();
     _orderSubscription?.cancel();
     _pageController.removeListener(_handlePageScroll);
     _pageController.dispose();
@@ -96,8 +104,8 @@ class _OrdersScreenState extends State<OrdersScreen> {
     }
   }
 
-  Future<void> _loadOrders() async {
-    setState(() => _isLoading = true);
+  Future<void> _loadOrders({bool silent = false}) async {
+    if (!silent) setState(() => _isLoading = true);
     final userId = await SessionService().getUserId();
     if (userId != null) {
       final orders = await _api.getOrders(userId);
@@ -108,6 +116,11 @@ class _OrdersScreenState extends State<OrdersScreen> {
         });
       }
     }
+  }
+
+  // Public method for external refresh via GlobalKey (preserves tab position)
+  void refresh() {
+    _loadOrders(silent: true);
   }
 
   List<dynamic> _getFilteredOrders(String filter) {

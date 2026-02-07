@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 import '../models/search_models.dart';
 import '../models/inventory_models.dart';
+import '../models/notification_model.dart';
 
 class ApiService {
   static String get baseUrl {
@@ -673,23 +674,29 @@ class ApiService {
     String? deliveryAddress,
     double? deliveryLat,
     double? deliveryLng,
+    bool isManual = false,
   }) async {
     final url = Uri.parse('$baseUrl/reservations/create');
 
     // Transformamos los items al formato que espera el backend
     final formattedItems = items.map((item) {
-      // Si es un mapa (por si acaso), usamos [], si es objeto usamos .propiedad
-      // Pero como en Dart no podemos usar [] en objetos que no lo soportan sin error,
-      // asumimos que es ProductItem ya que eso envía el home_screen.
-
-      // Opcion segura: reflection o dynamic check, pero lo más simple es asumir objeto
-      // dado que es lo que enviamos desde HomeScreen.
-      return {
-        "product_id": (item as dynamic).productId,
-        "product_name": (item as dynamic).name,
-        "quantity": (item as dynamic).requestedQuantity,
-        "unit_price": (item as dynamic).price,
-      };
+      // Handle both Map<String, dynamic> (from ManualSaleScreen) and objects (from HomeScreen)
+      if (item is Map<String, dynamic>) {
+        return {
+          "product_id": item['productId'] ?? item['product_id'],
+          "product_name": item['name'] ?? item['product_name'],
+          "quantity": item['requestedQuantity'] ?? item['quantity'],
+          "unit_price": item['price'] ?? item['unit_price'],
+        };
+      } else {
+        // Object with properties (ProductItem from HomeScreen)
+        return {
+          "product_id": (item as dynamic).productId,
+          "product_name": (item as dynamic).name,
+          "quantity": (item as dynamic).requestedQuantity,
+          "unit_price": (item as dynamic).price,
+        };
+      }
     }).toList();
 
     // Construir body con campos de delivery
@@ -698,6 +705,7 @@ class ApiService {
       "bodega_id": bodegaId,
       "items": formattedItems,
       "delivery_type": deliveryType,
+      "is_manual": isManual,
     };
 
     if (deliveryAddress != null) body["delivery_address"] = deliveryAddress;
@@ -1156,6 +1164,66 @@ class ApiService {
     } catch (e) {
       print("Error checking delivery coverage: $e");
       return {'in_range': false, 'reason': e.toString()};
+    }
+  }
+
+  // --- NOTIFICATION ENDPOINTS ---
+
+  Future<List<NotificationModel>> getNotifications(String userId) async {
+    final url = Uri.parse('$baseUrl/notifications/?user_id=$userId');
+    try {
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        List<dynamic> data = jsonDecode(utf8.decode(response.bodyBytes));
+        return data.map((e) => NotificationModel.fromJson(e)).toList();
+      }
+      return [];
+    } catch (e) {
+      print("Error fetching notifications: $e");
+      return [];
+    }
+  }
+
+  Future<bool> markNotificationRead(String userId, int notificationId) async {
+    final url = Uri.parse(
+      '$baseUrl/notifications/$notificationId/read?user_id=$userId',
+    );
+    try {
+      final response = await http.post(url);
+      return response.statusCode == 200;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  Future<bool> markAllNotificationsRead(String userId) async {
+    final url = Uri.parse('$baseUrl/notifications/read-all?user_id=$userId');
+    try {
+      final response = await http.post(url);
+      return response.statusCode == 200;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // Get product by ID (for stock alert navigation)
+  Future<Map<String, dynamic>?> getProductById(
+    String userId,
+    int productId,
+  ) async {
+    final url = Uri.parse(
+      '$baseUrl/bodeguero/get-product/$productId?user_id=$userId',
+    );
+    try {
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        final data = jsonDecode(utf8.decode(response.bodyBytes));
+        return data['product'];
+      }
+      return null;
+    } catch (e) {
+      print("Error fetching product: $e");
+      return null;
     }
   }
 }

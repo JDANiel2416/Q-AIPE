@@ -222,3 +222,24 @@ class ReservationItem(Base):
     total_price = Column(Numeric(10, 2), nullable=False)
 
     reservation = relationship("Reservation", back_populates="items")
+
+
+# 7. NOTIFICACIONES (NUEVO)
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False) # Bodeguero o Cliente
+    
+    title = Column(String, nullable=False)
+    message = Column(String, nullable=False)
+    type = Column(String, default="INFO") # INFO, WARNING, STOCK_ALERT, NEW_ORDER
+    is_read = Column(Boolean, default=False)
+    
+    # Optional: product_id for STOCK_ALERT notifications
+    product_id = Column(Integer, nullable=True)
+    
+    created_at = Column(TIMESTAMP, server_default=text("now()"))
+
+    # Relaciones
+    user = relationship("User")

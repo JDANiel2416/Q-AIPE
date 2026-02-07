@@ -535,9 +535,36 @@ async def search_smart(
         # --- NUEVO: PRE-BÚSQUEDA DE CONTEXTO PARA CLARIFICACIÓN ---
         available_catalog = ""
         if intent_type == "CLARIFICATION_NEEDED":
-             # Extraemos keywords simples del query para ver qué hay disponible
-             # Ej: "Coca" -> Buscamos todo lo que tenga "Coca" cerca
-             raw_keywords = [w for w in request.query.split() if len(w) > 3] # Solo palabras > 3 letras
+             # PRIMERO: Buscar en el historial de la conversación para encontrar el contexto
+             raw_keywords = []
+             
+             if current_session:
+                 # Recuperar los últimos 6 mensajes de la conversación (3 intercambios)
+                 recent_messages = db.query(ChatMessage).filter(
+                     ChatMessage.session_id == current_session.id
+                 ).order_by(ChatMessage.created_at.desc()).limit(6).all()
+                 
+                 # Combinar todo el texto del historial para buscar palabras clave de productos
+                 history_text = " ".join([msg.content for msg in recent_messages if msg.content])
+                 print(f"🔎 [CLARIFICATION-CONTEXT] Historial reciente: {history_text[:200]}...")
+                 
+                 # Extraer palabras significativas del historial (> 3 letras, no stopwords)
+                 stopwords = {'pero', 'quiero', 'dame', 'necesito', 'tengo', 'tienes', 'tiene', 
+                              'para', 'este', 'esta', 'esos', 'esas', 'algo', 'nada', 'todo',
+                              'como', 'cual', 'cuanto', 'cuantos', 'porque', 'donde', 'cuando',
+                              'hola', 'gracias', 'buenas', 'buenos', 'días', 'tardes', 'noches'}
+                 
+                 for word in history_text.split():
+                     word_clean = word.lower().strip('.,!?¿¡"\'()[]{}')
+                     if len(word_clean) > 3 and word_clean not in stopwords:
+                         raw_keywords.append(word_clean)
+                 
+                 # Remover duplicados pero mantener orden
+                 raw_keywords = list(dict.fromkeys(raw_keywords))[:10]
+             
+             # FALLBACK: Si no hay historial, usar el query actual
+             if not raw_keywords:
+                 raw_keywords = [w.lower() for w in request.query.split() if len(w) > 3]
              
              if raw_keywords:
                  print(f"🔎 [CLARIFICATION-CONTEXT] Buscando contexto para: {raw_keywords}")

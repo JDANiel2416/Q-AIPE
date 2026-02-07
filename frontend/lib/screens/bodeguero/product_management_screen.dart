@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'dart:async';
 import 'dart:ui';
 import '../../services/api_service.dart';
 import '../../services/session_service.dart';
 
-import '../common/login_screen.dart';
 import 'add_product_screen.dart';
 import 'edit_product_screen.dart';
 
@@ -16,10 +16,10 @@ class BodegueroScreen extends StatefulWidget {
   const BodegueroScreen({super.key, this.isEmbedded = false});
 
   @override
-  State<BodegueroScreen> createState() => _BodegueroScreenState();
+  State<BodegueroScreen> createState() => BodegueroScreenState();
 }
 
-class _BodegueroScreenState extends State<BodegueroScreen>
+class BodegueroScreenState extends State<BodegueroScreen>
     with SingleTickerProviderStateMixin {
   final ApiService _api = ApiService();
   List<dynamic> _products = [];
@@ -48,6 +48,8 @@ class _BodegueroScreenState extends State<BodegueroScreen>
   // Estado para arrastre directo en la barra
   bool _isDraggingBar = false;
 
+  Timer? _refreshTimer;
+
   @override
   void initState() {
     super.initState();
@@ -65,9 +67,12 @@ class _BodegueroScreenState extends State<BodegueroScreen>
     _pillPositionNotifier = ValueNotifier<double>(0.0);
     // Escuchar cambios de scroll en tiempo real
     _pageController.addListener(_handlePageScroll);
-    // Escuchar cambios de scroll en tiempo real
-    _pageController.addListener(_handlePageScroll);
     _loadCategories(); // Primero categorías, luego datos
+
+    // Auto-refresh every 5 seconds
+    _refreshTimer = Timer.periodic(Duration(seconds: 5), (_) {
+      if (mounted) _loadData(silent: true);
+    });
   }
 
   Future<void> _loadCategories() async {
@@ -95,8 +100,6 @@ class _BodegueroScreenState extends State<BodegueroScreen>
             else if (n.contains('mascota'))
               icon = Icons.pets;
 
-            // Si el backend envía icono (futuro), podríamos usarlo
-
             return {'name': cat.name, 'icon': icon, 'id': cat.id};
           }).toList();
         } else {
@@ -116,6 +119,7 @@ class _BodegueroScreenState extends State<BodegueroScreen>
 
   @override
   void dispose() {
+    _refreshTimer?.cancel();
     _pageController.removeListener(_handlePageScroll);
     _pageController.dispose();
     _pillPositionNotifier.dispose();
@@ -165,30 +169,31 @@ class _BodegueroScreenState extends State<BodegueroScreen>
     return filtered;
   }
 
-  int _getProductCount(String category) {
-    return _products
-        .where((p) => (p['category'] ?? "Otros") == category)
-        .length;
-  }
-
-  Future<void> _loadData() async {
-    setState(() => _isLoading = true);
+  Future<void> _loadData({bool silent = false}) async {
+    if (!silent) setState(() => _isLoading = true);
     final uid = await SessionService().getUserId();
     if (uid != null) {
       _userId = uid;
 
       final data = await _api.getMyInventory(uid);
-      setState(() {
-        if (data is Map && data['products'] != null) {
-          _products = data['products'];
-        } else if (data is List) {
-          _products = data;
-        } else {
-          _products = [];
-        }
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          if (data is Map && data['products'] != null) {
+            _products = data['products'];
+          } else if (data is List) {
+            _products = data;
+          } else {
+            _products = [];
+          }
+          _isLoading = false;
+        });
+      }
     }
+  }
+
+  // Public method for external refresh via GlobalKey (preserves tab position)
+  void refresh() {
+    _loadData(silent: true);
   }
 
   void _toggleProduct(Map<String, dynamic> product, bool value) async {

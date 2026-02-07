@@ -12,33 +12,35 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 }
 
 class PushNotificationService {
-  static final PushNotificationService _instance = PushNotificationService._internal();
+  static final PushNotificationService _instance =
+      PushNotificationService._internal();
   factory PushNotificationService() => _instance;
   PushNotificationService._internal();
 
   final FirebaseMessaging _messaging = FirebaseMessaging.instance;
-  final FlutterLocalNotificationsPlugin _localNotifications = FlutterLocalNotificationsPlugin();
-  
+  final FlutterLocalNotificationsPlugin _localNotifications =
+      FlutterLocalNotificationsPlugin();
+
   String? _fcmToken;
   String? get fcmToken => _fcmToken;
 
   // --- NUEVO: StreamController para notificar eventos de pedidos al Dashboard ---
-  final StreamController<Map<String, dynamic>> _orderEventController = 
+  final StreamController<Map<String, dynamic>> _orderEventController =
       StreamController<Map<String, dynamic>>.broadcast();
-  
+
   /// Stream que el Dashboard puede escuchar para actualizarse en tiempo real
   Stream<Map<String, dynamic>> get onOrderEvent => _orderEventController.stream;
-  
+
   // NUEVO: Almacenar navegación pendiente cuando la app se abre desde notificación
   String? _pendingOrderId;
   String? get pendingOrderId => _pendingOrderId;
-  
+
   /// Establecer navegación pendiente (llamado desde main.dart)
   void setPendingNavigation(String orderId) {
     _pendingOrderId = orderId;
     print('📌 Navegación pendiente guardada: $orderId');
   }
-  
+
   /// Limpiar navegación pendiente después de procesarla
   void clearPendingNavigation() {
     _pendingOrderId = null;
@@ -48,13 +50,13 @@ class PushNotificationService {
   Future<void> init() async {
     // 1. Solicitar permisos
     await _requestPermission();
-    
+
     // 2. Configurar notificaciones locales (para mostrar en foreground)
     await _initLocalNotifications();
-    
+
     // 3. Configurar handlers de mensajes
     _setupMessageHandlers();
-    
+
     // 4. Obtener token FCM
     await _getToken();
   }
@@ -67,19 +69,19 @@ class PushNotificationService {
       sound: true,
       provisional: false,
     );
-    
+
     print('🔔 Permiso de notificaciones: ${settings.authorizationStatus}');
   }
 
   /// Inicializar notificaciones locales
   Future<void> _initLocalNotifications() async {
-    const AndroidInitializationSettings androidSettings = 
+    const AndroidInitializationSettings androidSettings =
         AndroidInitializationSettings('@mipmap/ic_launcher');
-    
+
     const InitializationSettings initSettings = InitializationSettings(
       android: androidSettings,
     );
-    
+
     // NUEVO: Configurar handler para cuando el usuario toca la notificación local
     await _localNotifications.initialize(
       initSettings,
@@ -91,7 +93,7 @@ class PushNotificationService {
         }
       },
     );
-    
+
     // Crear canal de alta importancia
     const AndroidNotificationChannel channel = AndroidNotificationChannel(
       'high_importance_channel',
@@ -99,12 +101,14 @@ class PushNotificationService {
       description: 'Canal para alertas de pedidos en tiempo real',
       importance: Importance.max,
     );
-    
+
     await _localNotifications
-        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >()
         ?.createNotificationChannel(channel);
   }
-  
+
   /// Manejar el payload de una notificación local
   void _handleNotificationPayload(String payload) {
     print('🧭 Navegando desde notificación local: $payload');
@@ -120,7 +124,7 @@ class PushNotificationService {
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
       print('📩 [FOREGROUND] Mensaje recibido: ${message.notification?.title}');
       _showLocalNotification(message);
-      
+
       // Emitir evento para que el Dashboard se actualice (pero NO navegar)
       final dataType = message.data['type'];
       if (dataType == 'NEW_ORDER') {
@@ -132,23 +136,27 @@ class PushNotificationService {
         });
       }
     });
-    
+
     // Cuando el usuario toca la notificación (app en background/foreground)
     FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
-      print('📲 Usuario abrió la app desde notificación (background): ${message.data}');
+      print(
+        '📲 Usuario abrió la app desde notificación (background): ${message.data}',
+      );
       _handleNotificationTap(message);
     });
-    
+
     // NUEVO: Verificar si la app se abrió desde notificación estando completamente cerrada
     _checkInitialMessage();
   }
-  
+
   /// Verificar si la app se abrió desde notificación estando CERRADA
   Future<void> _checkInitialMessage() async {
     try {
       final initialMessage = await _messaging.getInitialMessage();
       if (initialMessage != null) {
-        print('📲 App se abrió desde notificación (terminated): ${initialMessage.data}');
+        print(
+          '📲 App se abrió desde notificación (terminated): ${initialMessage.data}',
+        );
         // Esperar un momento para que la app termine de inicializarse
         await Future.delayed(const Duration(milliseconds: 500));
         _handleNotificationTap(initialMessage);
@@ -157,19 +165,19 @@ class PushNotificationService {
       print('⚠️ Error checking initial message: $e');
     }
   }
-  
+
   /// Manejar el tap en una notificación (centralizado para todos los estados)
   void _handleNotificationTap(RemoteMessage message) {
     final dataType = message.data['type'];
-    
+
     if (dataType == 'NEW_ORDER') {
       final reservationId = message.data['reservation_id'];
       if (reservationId != null) {
         print('🧭 Navegando a pedido desde notificación: $reservationId');
-        
+
         // NUEVO: Guardar como navegación pendiente para que DashboardScreen lo procese
         _pendingOrderId = reservationId;
-        
+
         // Emitir evento para navegación directa
         _orderEventController.add({
           'type': 'NAVIGATE_TO_ORDER',
@@ -182,8 +190,9 @@ class PushNotificationService {
   /// Mostrar notificación local (para cuando la app está en foreground)
   Future<void> _showLocalNotification(RemoteMessage message) async {
     RemoteNotification? notification = message.notification;
-    final reservationId = message.data['reservation_id']; // Extraer ID del pedido
-    
+    final reservationId =
+        message.data['reservation_id']; // Extraer ID del pedido
+
     if (notification != null) {
       await _localNotifications.show(
         notification.hashCode,
@@ -198,7 +207,8 @@ class PushNotificationService {
             icon: '@mipmap/ic_launcher',
           ),
         ),
-        payload: reservationId, // NUEVO: Incluir reservation_id como payload para navegación
+        payload:
+            reservationId, // NUEVO: Incluir reservation_id como payload para navegación
       );
     }
   }
@@ -207,13 +217,13 @@ class PushNotificationService {
   Future<String?> _getToken() async {
     _fcmToken = await _messaging.getToken();
     print('🔑 FCM Token: $_fcmToken');
-    
+
     // Escuchar cambios de token
     _messaging.onTokenRefresh.listen((newToken) {
       _fcmToken = newToken;
       print('🔄 Token FCM actualizado: $newToken');
     });
-    
+
     return _fcmToken;
   }
 
@@ -222,7 +232,7 @@ class PushNotificationService {
     if (_fcmToken == null) {
       await _getToken();
     }
-    
+
     if (_fcmToken != null) {
       try {
         await ApiService().registerFcmToken(userId, _fcmToken!);
@@ -232,17 +242,24 @@ class PushNotificationService {
       }
     }
   }
-  
+
   /// Manejar notificación de OneSignal (Click o Foreground)
   void handleOneSignalNotification(Map<String, dynamic> data) {
     final type = data['type'];
     final reservationId = data['reservation_id'];
-    
+
     if (type == 'NEW_ORDER' && reservationId != null) {
       print('🔔 [OneSignal] Evento NEW_ORDER procesado para navegación');
       _orderEventController.add({
         'type': 'NAVIGATE_TO_ORDER',
         'reservation_id': reservationId,
+      });
+    } else if (type == 'STOCK_ALERT') {
+      print('🔔 [OneSignal] Evento STOCK_ALERT procesado para navegación');
+      _orderEventController.add({
+        'type': 'NAVIGATE_TO_PRODUCT',
+        'product_id': data['product_id'],
+        'product_name': data['product_name'],
       });
     }
   }
@@ -251,11 +268,22 @@ class PushNotificationService {
   void handleOneSignalForegroundEvent(Map<String, dynamic> data) {
     final type = data['type'];
     if (type == 'NEW_ORDER') {
-      print('🔔 [OneSignal] Evento NEW_ORDER en Foreground -> Actualizando Dashboard');
+      print(
+        '🔔 [OneSignal] Evento NEW_ORDER en Foreground -> Actualizando Dashboard',
+      );
       _orderEventController.add({
         'type': 'NEW_ORDER',
         'reservation_id': data['reservation_id'],
         'total': data['total'],
+      });
+    } else if (type == 'STOCK_ALERT') {
+      print(
+        '🔔 [OneSignal] Evento STOCK_ALERT en Foreground -> Actualizando Dashboard',
+      );
+      _orderEventController.add({
+        'type': 'STOCK_ALERT',
+        'product_id': data['product_id'],
+        'product_name': data['product_name'],
       });
     }
   }

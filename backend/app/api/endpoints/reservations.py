@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.db.session import get_db
-from app.models.tables import Reservation, ReservationItem, User, Bodega
+from app.models.tables import Reservation, ReservationItem, User, Bodega, Notification
 from pydantic import BaseModel
 from typing import List, Optional
 import uuid
@@ -24,12 +24,32 @@ class CreateReservationRequest(BaseModel):
     delivery_address: Optional[str] = None
     delivery_lat: Optional[float] = None
     delivery_lng: Optional[float] = None
+    is_manual: bool = False # Para ventas manuales (bodeguero)
 
 @router.post("/create")
 async def create_reservation(request: CreateReservationRequest, db: Session = Depends(get_db)):
     try:
         # 1. Validar Usuario y Bodega
-        user = db.query(User).filter(User.id == request.user_id).first()
+        target_user_id = request.user_id
+
+        if request.is_manual:
+             # Buscar o crear usuario "Cliente de Paso"
+             walk_in_dni = "00000000"
+             user = db.query(User).filter(User.dni == walk_in_dni).first()
+             if not user:
+                 user = User(
+                     dni=walk_in_dni,
+                     full_name=encrypt_value("Cliente de Paso"),
+                     role="CLIENT",
+                     is_active=True,
+                     is_verified=True
+                 )
+                 db.add(user)
+                 db.flush() # Para obtener ID
+             target_user_id = str(user.id)
+        else:
+             user = db.query(User).filter(User.id == request.user_id).first()
+
         bodega = db.query(Bodega).filter(Bodega.id == request.bodega_id).first()
         
         if not user or not bodega:
@@ -71,10 +91,10 @@ async def create_reservation(request: CreateReservationRequest, db: Session = De
         
         new_reservation = Reservation(
             id=reservation_id,
-            user_id=request.user_id,
+            user_id=target_user_id,
             bodega_id=request.bodega_id,
             total_amount=total_amount,
-            status="PENDING",  # Pendiente hasta que bodeguero confirme
+            status="COMPLETED" if request.is_manual else "PENDING",  # Manuales se completan directo
             qr_code_data=encrypt_value(qr_data),
             # Campos de Delivery
             delivery_type=request.delivery_type,
@@ -111,6 +131,38 @@ async def create_reservation(request: CreateReservationRequest, db: Session = De
             if inventory_item.stock_quantity <= 0:
                 inventory_item.is_available = False
                 inventory_item.stock_quantity = 0 # Asegurar no negativos
+                
+                # CREAR NOTIFICACION DE STOCK AGOTADO (solo si no existe ya)
+                existing_alert = db.query(Notification).filter(
+                    Notification.user_id == str(bodega.owner_id),
+                    Notification.type == "STOCK_ALERT",
+                    Notification.product_id == item.product_id
+                ).first()
+                
+                if not existing_alert:
+                    stock_alert = Notification(
+                        user_id=bodega.owner_id,
+                        title="⚠️ Stock Agotado",
+                        message=f"El producto '{item.product_name}' se ha quedado sin stock.",
+                        type="STOCK_ALERT",
+                        product_id=item.product_id  # Store product ID for navigation
+                    )
+                    db.add(stock_alert)
+                    
+                    # PUSH NOTIFICATION para alerta de stock
+                    from app.services.notification_service import notification_service
+                    bodeguero = db.query(User).filter(User.id == bodega.owner_id).first()
+                    if bodeguero and bodeguero.fcm_token:
+                        notification_service.send_notification(
+                            title="⚠️ Stock Agotado",
+                            message=f"El producto '{item.product_name}' se ha quedado sin stock.",
+                            player_ids=[bodeguero.fcm_token],
+                            data={
+                                "type": "STOCK_ALERT",
+                                "product_id": item.product_id,
+                                "product_name": item.product_name
+                            }
+                        )
 
             db_item = ReservationItem(
                 reservation_id=reservation_id,
@@ -137,10 +189,10 @@ async def create_reservation(request: CreateReservationRequest, db: Session = De
         items_summary = ", ".join([f"{i.quantity}x {i.product_name}" for i in request.items])
         
         notification_msg = (
-            f"🔔 [NUEVO PEDIDO] {formatted_name} ha reservado: {items_summary}. "
+            f"[NUEVO PEDIDO] {formatted_name} ha reservado: {items_summary}. "
             f"Total: S/{total_amount:.2f}"
         )
-        print(f"\n📨 ENVIANDO NOTIFICACIÓN A BODEGUERO ({bodega.name}):\n{notification_msg}\n")
+        print(f"\n[INFO] ENVIANDO NOTIFICACION A BODEGUERO ({bodega.name}):\n{notification_msg}\n")
 
         # --- NOTIFICACIÓN PUSH ONESIGNAL ---
         from app.services.notification_service import notification_service
@@ -148,11 +200,11 @@ async def create_reservation(request: CreateReservationRequest, db: Session = De
         # Obtener el usuario bodeguero (dueño de la bodega)
         bodeguero = db.query(User).filter(User.id == bodega.owner_id).first()
         
-        if bodeguero and bodeguero.fcm_token:
+        if bodeguero and bodeguero.fcm_token and not request.is_manual:
             if str(bodeguero.id) == str(request.user_id):
-                print(f"⚠️ El bodeguero es el mismo que el cliente, no se envía notificación")
+                print(f"[INFO] El bodeguero es el mismo que el cliente, no se envia notificacion")
             elif user.fcm_token and bodeguero.fcm_token == user.fcm_token:
-                print(f"⚠️ Cliente y bodeguero usan el mismo dispositivo/token, no se envía notificación")
+                print(f"[INFO] Cliente y bodeguero usan el mismo dispositivo/token, no se envia notificacion")
             else:
                  notification_service.send_notification(
                     title="¡Nuevo Pedido Recibido!",
@@ -164,9 +216,9 @@ async def create_reservation(request: CreateReservationRequest, db: Session = De
                         "total": float(total_amount)
                     }
                 )
-                 print(f"✅ Notificación enviada a bodeguero: {decrypt_value(bodeguero.full_name)}")
+                 print(f"[OK] Notificacion enviada a bodeguero: {decrypt_value(bodeguero.full_name)}")
         else:
-            print(f"⚠️ Bodeguero sin token registrado, no se puede enviar push")
+            print(f"[WARN] Bodeguero sin token registrado, no se puede enviar push")
         # -----------------------------------
 
         return {

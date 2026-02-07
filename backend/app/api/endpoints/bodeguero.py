@@ -96,6 +96,39 @@ def get_my_inventory(user_id: str, db: Session = Depends(get_db)):
         "products": results
     }
 
+# NUEVO: Obtener un producto específico por ID (para navegación desde alertas de stock)
+@router.get("/get-product/{product_id}")
+def get_product_by_id(user_id: str, product_id: int, db: Session = Depends(get_db)):
+    """Obtiene los datos de un producto específico del inventario del bodeguero"""
+    # 1. Validar Bodega
+    bodega = db.query(Bodega).filter(Bodega.owner_id == user_id).first()
+    if not bodega:
+        raise HTTPException(status_code=404, detail="Bodega no encontrada")
+    
+    # 2. Buscar producto en el inventario
+    result = db.query(StoreInventory, MasterProduct).join(
+        MasterProduct, StoreInventory.product_id == MasterProduct.id
+    ).filter(
+        StoreInventory.bodega_id == bodega.id,
+        MasterProduct.id == product_id
+    ).first()
+    
+    if not result:
+        raise HTTPException(status_code=404, detail="Producto no encontrado en tu inventario")
+    
+    inv, prod = result
+    return {
+        "success": True,
+        "product": {
+            "product_id": prod.id,
+            "name": prod.name,
+            "category": prod.category,
+            "price": float(inv.price),
+            "stock": inv.stock_quantity,
+            "in_stock": inv.is_available
+        }
+    }
+
 @router.post("/toggle-stock")
 def toggle_stock(user_id: str, update: StockUpdate, db: Session = Depends(get_db)):
     # 1. Buscar bodega
@@ -289,6 +322,15 @@ def update_product_by_id(
     # AUTOMATION: Reactivar si hay stock positivo
     if existing_inv.stock_quantity > 0:
         existing_inv.is_available = True
+        
+        # Delete any STOCK_ALERT notifications for this product
+        from app.models.tables import Notification
+        db.query(Notification).filter(
+            Notification.user_id == str(bodega.owner_id),
+            Notification.type == "STOCK_ALERT",
+            Notification.product_id == update_data.product_id
+        ).delete()
+        
     elif existing_inv.stock_quantity <= 0:
         # Por seguridad, si restan y baja a 0
         existing_inv.stock_quantity = 0
@@ -334,7 +376,21 @@ def update_existing_product(
     # 4. Actualizar precio y stock
     existing_inv.price = update_data.price
     existing_inv.stock_quantity = update_data.stock
-    existing_inv.is_available = True
+    
+    # AUTOMATION: Update availability based on stock
+    if existing_inv.stock_quantity > 0:
+        existing_inv.is_available = True
+        
+        # Delete any STOCK_ALERT notifications for this product
+        from app.models.tables import Notification
+        db.query(Notification).filter(
+            Notification.user_id == str(bodega.owner_id),
+            Notification.type == "STOCK_ALERT",
+            Notification.product_id == existing_master.id
+        ).delete()
+    else:
+        existing_inv.is_available = False
+    
     db.commit()
 
     return {"success": True, "message": "Producto actualizado correctamente"}
@@ -607,6 +663,16 @@ def update_order_status(
                 # Reactivar el producto si estaba desactivado por falta de stock
                 if inventory_item.stock_quantity > 0:
                     inventory_item.is_available = True
+                    
+                    # Delete any STOCK_ALERT notifications for this product
+                    from app.models.tables import Notification
+                    bodega = db.query(Bodega).filter(Bodega.id == order.bodega_id).first()
+                    if bodega:
+                        db.query(Notification).filter(
+                            Notification.user_id == str(bodega.owner_id),
+                            Notification.type == "STOCK_ALERT",
+                            Notification.product_id == inventory_item.product_id
+                        ).delete()
                 
                 print(f"✅ Stock restaurado: +{item.quantity} de '{item.product_name}'")
     
@@ -716,6 +782,20 @@ def get_dashboard_stats(user_id: str, db: Session = Depends(get_db)):
         else:
             minutes = max(1, time_diff.seconds // 60)
             time_ago = f"Hace {minutes} min"
+        # Delivery info (same as get_orders)
+        delivery_lat = None
+        delivery_lng = None
+        
+        if order.delivery_coords_encrypted and order.delivery_type == "DELIVERY":
+            if order.delivery_coords_expires_at and order.delivery_coords_expires_at > datetime.now():
+                try:
+                    coords_str = decrypt_value(order.delivery_coords_encrypted)
+                    if coords_str and "," in coords_str:
+                        lat_str, lng_str = coords_str.split(",")
+                        delivery_lat = float(lat_str)
+                        delivery_lng = float(lng_str)
+                except:
+                    pass
         
         pending_orders_data.append({
             "id": str(order.id),
@@ -733,7 +813,13 @@ def get_dashboard_stats(user_id: str, db: Session = Depends(get_db)):
                     "total_price": float(item.total_price)
                 }
                 for item in order.items
-            ]
+            ],
+            # Delivery fields
+            "delivery_type": order.delivery_type or "PICKUP",
+            "delivery_address": order.delivery_address_text,
+            "delivery_lat": delivery_lat,
+            "delivery_lng": delivery_lng,
+            "delivery_fee": float(order.delivery_fee) if order.delivery_fee else 0.0
         })
 
     # 6. Ventas de la semana actual (Lunes a Domingo)

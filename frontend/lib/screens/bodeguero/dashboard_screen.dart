@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:fl_chart/fl_chart.dart';
 import 'dart:async';
+import 'package:fl_chart/fl_chart.dart';
 import 'dart:ui';
 import '../../services/session_service.dart';
 import '../../services/api_service.dart';
@@ -15,6 +15,8 @@ import 'order_detail_screen.dart';
 import 'debtors_screen.dart';
 import 'qr_scanner_screen.dart';
 import 'bodeguero_colors.dart';
+import 'manual_sale_screen.dart';
+import 'edit_product_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({Key? key}) : super(key: key);
@@ -41,6 +43,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   bool _isRefreshing = false;
 
   List<Map<String, dynamic>> _pendingOrders = [];
+  List<dynamic> _stockNotifications = []; // Stock alert notifications
   List<Map<String, dynamic>> _weeklySales = [];
   String? _bestSellingProduct;
   String? _leastSellingProduct;
@@ -82,6 +85,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     },
   ];
 
+  Timer? _refreshTimer;
+
   @override
   void initState() {
     super.initState();
@@ -99,6 +104,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _pillPositionNotifier = ValueNotifier<double>(0.0);
 
     _loadDashboardData();
+
+    // Auto-refresh every 5 seconds
+    _refreshTimer = Timer.periodic(Duration(seconds: 5), (_) {
+      if (mounted && _currentNavIndex == 0) {
+        // Solo si estamos en dashboard visible
+        _loadDashboardData();
+      }
+    });
 
     // Escuchar eventos de nuevos pedidos en tiempo real
     _orderEventSubscription = PushNotificationService().onOrderEvent.listen((
@@ -184,6 +197,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   void dispose() {
+    _refreshTimer?.cancel();
     _orderEventSubscription?.cancel();
     _pillPositionNotifier.dispose();
     super.dispose();
@@ -196,10 +210,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
         final results = await Future.wait([
           _api.getMyInventory(userId),
           _api.getDashboardStats(userId),
+          _api.getNotifications(userId), // Fetch stock notifications
         ]);
 
         final inventoryData = results[0];
         final statsData = results[1] as Map<String, dynamic>;
+        final notifications = results[2]; // NotificationModel list
 
         if (mounted) {
           setState(() {
@@ -215,6 +231,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
             _pendingOrders = List<Map<String, dynamic>>.from(
               statsData['pending_orders'] ?? [],
             );
+            _stockNotifications = notifications; // Store stock alerts
+            print(
+              '[DEBUG] Stock notifications loaded: ${_stockNotifications.length}',
+            );
+            print('[DEBUG] Pending orders loaded: ${_pendingOrders.length}');
             _weeklySales = List<Map<String, dynamic>>.from(
               statsData['weekly_sales'] ?? [],
             );
@@ -719,10 +740,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
             },
             child: Stack(
               children: [
-                _buildCircleBtn(Icons.notifications_outlined, () {
-                  setState(() => _showNotifications = !_showNotifications);
-                }),
-                if (_pendingOrdersCount > 0)
+                // Bell icon - tap handled by outer GestureDetector
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: BColors.surface(context),
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: BColors.shadowMedium(context),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Icon(
+                    Icons.notifications_outlined,
+                    color: BColors.primary(context),
+                    size: 22,
+                  ),
+                ),
+                if (_pendingOrdersCount > 0 || _stockNotifications.isNotEmpty)
                   Positioned(
                     right: 0,
                     top: 0,
@@ -737,7 +775,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         minHeight: 18,
                       ),
                       child: Text(
-                        '$_pendingOrdersCount',
+                        '${_pendingOrdersCount + _stockNotifications.length}',
                         style: TextStyle(
                           color: Colors.white,
                           fontSize: 10,
@@ -1297,6 +1335,36 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
           ],
         ),
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            Expanded(
+              child: _buildActionCard(
+                "Venta Manual",
+                "Venta rápida",
+                Icons.point_of_sale,
+                const Color(0xFF8B5CF6), // Purple
+                () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const ManualSaleScreen()),
+                ).then((_) => _loadDashboardData()),
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: _buildActionCard(
+                "Deudores",
+                "Gestionar fiados",
+                Icons.money_off_csred_rounded,
+                BColors.error,
+                () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const DebtorsScreen()),
+                ),
+              ),
+            ),
+          ],
+        ),
       ],
     );
   }
@@ -1399,7 +1467,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                   fontWeight: FontWeight.bold,
                                 ),
                               ),
-                              if (_pendingOrdersCount > 0)
+                              if (_pendingOrdersCount > 0 ||
+                                  _stockNotifications.isNotEmpty)
                                 Container(
                                   padding: const EdgeInsets.symmetric(
                                     horizontal: 8,
@@ -1410,7 +1479,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                     borderRadius: BorderRadius.circular(10),
                                   ),
                                   child: Text(
-                                    "$_pendingOrdersCount nuevas",
+                                    "${_pendingOrdersCount + _stockNotifications.length} nuevas",
                                     style: TextStyle(
                                       color: BColors.primary(context),
                                       fontSize: 10,
@@ -1423,7 +1492,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         ),
                         const SizedBox(height: 12),
                         Divider(height: 1),
-                        if (_pendingOrders.isEmpty)
+                        if (_pendingOrders.isEmpty &&
+                            _stockNotifications.isEmpty)
                           Padding(
                             padding: EdgeInsets.all(30),
                             child: Center(
@@ -1440,87 +1510,160 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         else
                           ConstrainedBox(
                             constraints: const BoxConstraints(maxHeight: 300),
-                            child: ListView.separated(
+                            child: ListView(
                               shrinkWrap: true,
                               padding: EdgeInsets.zero,
-                              itemCount: _pendingOrders.length,
-                              separatorBuilder: (c, i) => Divider(height: 1),
-                              itemBuilder: (context, index) {
-                                final order = _pendingOrders[index];
-                                return ListTile(
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 20,
-                                    vertical: 8,
-                                  ),
-                                  leading: Container(
-                                    padding: const EdgeInsets.all(10),
-                                    decoration: BoxDecoration(
-                                      color: BColors.primaryLight(context),
-                                      shape: BoxShape.circle,
+                              children: [
+                                // Stock Alerts first
+                                ..._stockNotifications.map((notification) {
+                                  return ListTile(
+                                    contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 20,
+                                      vertical: 8,
                                     ),
-                                    child: Icon(
-                                      Icons.shopping_bag,
-                                      color: BColors.primary(context),
-                                      size: 20,
+                                    leading: Container(
+                                      padding: const EdgeInsets.all(10),
+                                      decoration: BoxDecoration(
+                                        color: BColors.warning.withOpacity(
+                                          0.15,
+                                        ),
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: Icon(
+                                        Icons.warning_amber_rounded,
+                                        color: BColors.warning,
+                                        size: 20,
+                                      ),
                                     ),
-                                  ),
-                                  title: Row(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Text(
-                                        "Nuevo Pedido",
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 14,
-                                        ),
+                                    title: Text(
+                                      notification.title,
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 14,
                                       ),
-                                      Text(
-                                        order['time_ago'] ?? '',
-                                        style: TextStyle(
-                                          color: BColors.textMuted(context),
-                                          fontSize: 10,
-                                        ),
+                                    ),
+                                    subtitle: Padding(
+                                      padding: const EdgeInsets.only(top: 4),
+                                      child: Text(
+                                        notification.message,
+                                        style: TextStyle(fontSize: 12),
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
                                       ),
-                                    ],
-                                  ),
-                                  subtitle: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Padding(
-                                        padding: const EdgeInsets.symmetric(
-                                          vertical: 4,
-                                        ),
-                                        child: Text(
-                                          order['items_summary'] ?? '',
-                                          style: TextStyle(fontSize: 12),
-                                          maxLines: 2,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
+                                    ),
+                                    onTap: () async {
+                                      setState(
+                                        () => _showNotifications = false,
+                                      );
+
+                                      // Navigate to EditProductScreen with product data
+                                      if (notification.productId != null) {
+                                        final userId = await SessionService()
+                                            .getUserId();
+                                        if (userId != null) {
+                                          final product = await _api
+                                              .getProductById(
+                                                userId,
+                                                notification.productId!,
+                                              );
+                                          if (product != null && mounted) {
+                                            Navigator.push(
+                                              context,
+                                              MaterialPageRoute(
+                                                builder: (_) =>
+                                                    EditProductScreen(
+                                                      product: product,
+                                                    ),
+                                              ),
+                                            ).then((_) => _loadDashboardData());
+                                          }
+                                        }
+                                      } else {
+                                        // Fallback to inventory tab
+                                        _onNavItemTapped(1);
+                                      }
+                                    },
+                                  );
+                                }).toList(),
+                                // Pending Orders
+                                ..._pendingOrders.map((order) {
+                                  return ListTile(
+                                    contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 20,
+                                      vertical: 8,
+                                    ),
+                                    leading: Container(
+                                      padding: const EdgeInsets.all(10),
+                                      decoration: BoxDecoration(
+                                        color: BColors.primaryLight(context),
+                                        shape: BoxShape.circle,
                                       ),
-                                      Text(
-                                        "Total: S/ ${(order['total_amount'] ?? 0.0).toDouble().toStringAsFixed(2)}",
-                                        style: TextStyle(
-                                          color: BColors.primary(context),
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 12,
+                                      child: Icon(
+                                        Icons.shopping_bag,
+                                        color: BColors.primary(context),
+                                        size: 20,
+                                      ),
+                                    ),
+                                    title: Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Text(
+                                          "Nuevo Pedido",
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 14,
+                                          ),
                                         ),
-                                      ),
-                                    ],
-                                  ),
-                                  onTap: () {
-                                    setState(() => _showNotifications = false);
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (_) =>
-                                            OrderDetailScreen(order: order),
-                                      ),
-                                    ).then((_) => _loadDashboardData());
-                                  },
-                                );
-                              },
+                                        Text(
+                                          order['time_ago'] ?? '',
+                                          style: TextStyle(
+                                            color: BColors.textMuted(context),
+                                            fontSize: 10,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    subtitle: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Padding(
+                                          padding: const EdgeInsets.symmetric(
+                                            vertical: 4,
+                                          ),
+                                          child: Text(
+                                            order['items_summary'] ?? '',
+                                            style: TextStyle(fontSize: 12),
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                        Text(
+                                          "Total: S/ ${(order['total_amount'] ?? 0.0).toDouble().toStringAsFixed(2)}",
+                                          style: TextStyle(
+                                            color: BColors.primary(context),
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    onTap: () {
+                                      setState(
+                                        () => _showNotifications = false,
+                                      );
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) =>
+                                              OrderDetailScreen(order: order),
+                                        ),
+                                      ).then((_) => _loadDashboardData());
+                                    },
+                                  );
+                                }).toList(),
+                              ],
                             ),
                           ),
                         Divider(height: 1),
@@ -1578,13 +1721,17 @@ class _EmbeddedProductsView extends StatefulWidget {
 }
 
 class _EmbeddedProductsViewState extends State<_EmbeddedProductsView> {
+  // GlobalKey for child to call refresh directly without rebuild
+  final GlobalKey<BodegueroScreenState> _childKey = GlobalKey();
+
   void refresh() {
-    if (mounted) setState(() {});
+    // Call child's refresh method directly (preserves tab position)
+    _childKey.currentState?.refresh();
   }
 
   @override
   Widget build(BuildContext context) {
-    return const BodegueroScreen(isEmbedded: true);
+    return BodegueroScreen(key: _childKey, isEmbedded: true);
   }
 }
 
@@ -1601,13 +1748,17 @@ class _EmbeddedOrdersView extends StatefulWidget {
 }
 
 class _EmbeddedOrdersViewState extends State<_EmbeddedOrdersView> {
+  // GlobalKey for child to call refresh directly without rebuild
+  final GlobalKey<OrdersScreenState> _childKey = GlobalKey();
+
   void refresh() {
-    if (mounted) setState(() {});
+    // Call child's refresh method directly (preserves tab position)
+    _childKey.currentState?.refresh();
   }
 
   @override
   Widget build(BuildContext context) {
-    return const OrdersScreen(isEmbedded: true);
+    return OrdersScreen(key: _childKey, isEmbedded: true);
   }
 }
 
